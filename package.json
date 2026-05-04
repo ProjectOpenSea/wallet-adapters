@@ -1,8 +1,14 @@
 {
   "name": "@opensea/wallet-adapters",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends",
+  "license": "MIT",
+  "homepage": "https://github.com/ProjectOpenSea/wallet-adapters",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ProjectOpenSea/wallet-adapters.git"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -68,6 +74,5 @@
     "mpc",
     "signing",
     "web3"
-  ],
-  "license": "MIT"
+  ]
 }
