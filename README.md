@@ -5,7 +5,7 @@ Provider-agnostic wallet adapters for signing and sending transactions across ma
 ## Features
 
 - **Provider-agnostic interface** — unified `WalletAdapter` abstraction with capabilities declaration
-- **Managed providers** — Privy, Turnkey, Fireblocks (handle gas/nonce server-side)
+- **Managed providers** — Privy, Turnkey, Fireblocks, Bankr (handle gas/nonce server-side)
 - **Local providers** — PrivateKey (handle gas/nonce client-side via RPC)
 - **Framework bridges** — optional adapters for viem and ethers.js
 - **Zero heavy dependencies** — core uses Web Crypto + `@noble/hashes` / `@noble/curves`
@@ -25,7 +25,7 @@ pnpm add @opensea/wallet-adapters
 import { createWalletFromEnv } from "@opensea/wallet-adapters"
 
 // Auto-detects provider from environment variables
-// Priority: Privy > Fireblocks > Turnkey > PrivateKey
+// Priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey
 const wallet = createWalletFromEnv()
 
 const address = await wallet.getAddress()
@@ -74,6 +74,17 @@ const wallet = TurnkeyAdapter.fromEnv()
 //           TURNKEY_ORGANIZATION_ID, TURNKEY_WALLET_ADDRESS, TURNKEY_RPC_URL
 ```
 
+### Bankr
+
+Managed agent wallet via Bankr's Wallet API. Auth is a single API key; the provider handles gas, nonce, and broadcast.
+
+```ts
+import { BankrAdapter } from "@opensea/wallet-adapters"
+
+const wallet = BankrAdapter.fromEnv()
+// Requires: BANKR_API_KEY
+```
+
 ### PrivateKey
 
 Local signing for development and testing.
@@ -120,12 +131,12 @@ if (wallet.capabilities.managedGas) {
 }
 ```
 
-| Capability | Privy | Fireblocks | Turnkey | PrivateKey |
-|------------|-------|------------|---------|------------|
-| `signMessage` | true | true | true | true |
-| `signTypedData` | true | true | true | true |
-| `managedGas` | true | true | false | false |
-| `managedNonce` | true | true | false | false |
+| Capability | Privy | Fireblocks | Turnkey | Bankr | PrivateKey |
+|------------|-------|------------|---------|-------|------------|
+| `signMessage` | true | true | true | true | true |
+| `signTypedData` | true | true | true | true | true |
+| `managedGas` | true | true | false | true | false |
+| `managedNonce` | true | true | false | true | false |
 
 ## Observability
 

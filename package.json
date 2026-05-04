@@ -1,6 +1,6 @@
 {
   "name": "@opensea/wallet-adapters",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends",
   "exports": {
