@@ -86,11 +86,17 @@ export interface WalletCapabilities {
   managedNonce: boolean
 }
 
-export type WalletProvider = "privy" | "turnkey" | "fireblocks" | "private-key"
+export type WalletProvider =
+  | "privy"
+  | "turnkey"
+  | "fireblocks"
+  | "bankr"
+  | "private-key"
 
 export const WALLET_PROVIDERS: WalletProvider[] = [
   "privy",
   "turnkey",
   "fireblocks",
+  "bankr",
   "private-key",
 ]

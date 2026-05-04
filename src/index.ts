@@ -1,5 +1,7 @@
 // Types
 
+export type { BankrConfig } from "./adapters/bankr.js"
+export { BankrAdapter } from "./adapters/bankr.js"
 export type { FireblocksConfig } from "./adapters/fireblocks.js"
 export {
   CHAIN_TO_FIREBLOCKS_ASSET,

@@ -7,6 +7,7 @@ import {
 
 describe("detectProvider", () => {
   afterEach(() => {
+    delete process.env.BANKR_API_KEY
     delete process.env.PRIVY_APP_ID
     delete process.env.PRIVY_APP_SECRET
     delete process.env.PRIVY_WALLET_ID
@@ -24,6 +25,11 @@ describe("detectProvider", () => {
 
   it("returns null when no env vars set", () => {
     expect(detectProvider()).toBeNull()
+  })
+
+  it("detects bankr", () => {
+    process.env.BANKR_API_KEY = "test"
+    expect(detectProvider()).toBe("bankr")
   })
 
   it("detects privy", () => {
@@ -49,16 +55,24 @@ describe("detectProvider", () => {
     expect(detectProvider()).toBe("private-key")
   })
 
-  it("privy takes priority over others", () => {
+  it("privy takes priority over bankr and private-key", () => {
     process.env.PRIVY_APP_ID = "test"
     process.env.PRIVY_WALLET_ID = "test"
+    process.env.BANKR_API_KEY = "test"
     process.env.PRIVATE_KEY = "0xabc"
     expect(detectProvider()).toBe("privy")
+  })
+
+  it("bankr takes priority over private-key", () => {
+    process.env.BANKR_API_KEY = "test"
+    process.env.PRIVATE_KEY = "0xabc"
+    expect(detectProvider()).toBe("bankr")
   })
 })
 
 describe("createWalletFromEnv", () => {
   afterEach(() => {
+    delete process.env.BANKR_API_KEY
     delete process.env.PRIVY_APP_ID
     delete process.env.PRIVY_APP_SECRET
     delete process.env.PRIVY_WALLET_ID
@@ -68,6 +82,12 @@ describe("createWalletFromEnv", () => {
 
   it("throws descriptive error when no provider configured", () => {
     expect(() => createWalletFromEnv()).toThrow("No wallet provider configured")
+  })
+
+  it("creates BankrAdapter when BANKR_API_KEY set", () => {
+    process.env.BANKR_API_KEY = "test-key"
+    const adapter = createWalletFromEnv()
+    expect(adapter.name).toBe("bankr")
   })
 
   it("creates PrivateKeyAdapter when PRIVATE_KEY set", () => {
@@ -89,8 +109,15 @@ describe("createWalletFromEnv", () => {
 
 describe("createWalletForProvider", () => {
   afterEach(() => {
+    delete process.env.BANKR_API_KEY
     delete process.env.PRIVATE_KEY
     delete process.env.RPC_URL
+  })
+
+  it("creates BankrAdapter for bankr provider", () => {
+    process.env.BANKR_API_KEY = "test-key"
+    const adapter = createWalletForProvider("bankr")
+    expect(adapter.name).toBe("bankr")
   })
 
   it("creates adapter for specified provider", () => {

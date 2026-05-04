@@ -7,6 +7,7 @@ import {
   type MockInstance,
   vi,
 } from "vitest"
+import { BankrAdapter } from "../adapters/bankr.js"
 import { FireblocksAdapter } from "../adapters/fireblocks.js"
 import { PrivateKeyAdapter } from "../adapters/private-key.js"
 import { PrivyAdapter } from "../adapters/privy.js"
@@ -462,5 +463,286 @@ describe("FireblocksAdapter signMessage/signTypedData", () => {
     expect(
       createBody.extraParameters.rawMessageData.messages[0].content,
     ).toBeTruthy()
+  })
+})
+
+describe("BankrAdapter", () => {
+  it("constructs with valid config", () => {
+    const adapter = new BankrAdapter({ apiKey: "test-api-key" })
+    expect(adapter.name).toBe("bankr")
+    expect(adapter.capabilities.signMessage).toBe(true)
+    expect(adapter.capabilities.signTypedData).toBe(true)
+    expect(adapter.capabilities.managedGas).toBe(true)
+    expect(adapter.capabilities.managedNonce).toBe(true)
+  })
+
+  it("fromEnv throws when BANKR_API_KEY is missing", () => {
+    expect(() => BankrAdapter.fromEnv()).toThrow(
+      "BANKR_API_KEY environment variable is required",
+    )
+  })
+
+  it("fromEnv creates adapter when env vars are set", () => {
+    process.env.BANKR_API_KEY = "test-api-key"
+    const adapter = BankrAdapter.fromEnv()
+    expect(adapter.name).toBe("bankr")
+    delete process.env.BANKR_API_KEY
+  })
+})
+
+describe("BankrAdapter getAddress", () => {
+  let fetchSpy: FetchMock
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(global, "fetch")
+  })
+
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
+
+  it("fetches EVM address from /wallet/me", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          wallets: [
+            {
+              chain: "evm",
+              address: "0x1234567890abcdef1234567890abcdef12345678",
+            },
+            { chain: "solana", address: "5DcK...NdR" },
+          ],
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const address = await adapter.getAddress()
+    expect(address).toBe("0x1234567890abcdef1234567890abcdef12345678")
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://api.bankr.bot/wallet/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "X-API-Key": "test-key" }),
+      }),
+    )
+  })
+
+  it("caches address after first fetch", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          wallets: [{ chain: "evm", address: "0xaabbccdd" }],
+        }),
+        { status: 200 },
+      ),
+    )
+
+    await adapter.getAddress()
+    const address = await adapter.getAddress()
+    expect(address).toBe("0xaabbccdd")
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it("throws when no EVM wallet is found", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          wallets: [{ chain: "solana", address: "5DcK...NdR" }],
+        }),
+        { status: 200 },
+      ),
+    )
+
+    await expect(adapter.getAddress()).rejects.toThrow(
+      "Bankr wallet has no EVM address",
+    )
+  })
+
+  it("throws on API error", async () => {
+    const adapter = new BankrAdapter({ apiKey: "bad-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response("Unauthorized", { status: 401 }),
+    )
+
+    await expect(adapter.getAddress()).rejects.toThrow(
+      "Bankr getAddress failed (401)",
+    )
+  })
+})
+
+describe("BankrAdapter sendTransaction", () => {
+  let fetchSpy: FetchMock
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(global, "fetch")
+  })
+
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
+
+  it("submits transaction via /wallet/submit", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          transactionHash: "0xdeadbeef",
+          status: "success",
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const result = await adapter.sendTransaction({
+      to: "0x1111111111111111111111111111111111111111",
+      data: "0x",
+      value: "1000000000000000000",
+      chainId: 8453,
+    })
+    expect(result.hash).toBe("0xdeadbeef")
+
+    const reqInit = fetchSpy.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(reqInit.body as string)
+    expect(body.transaction.to).toBe(
+      "0x1111111111111111111111111111111111111111",
+    )
+    expect(body.transaction.chainId).toBe(8453)
+    expect(body.transaction.data).toBe("0x")
+    expect(body.transaction.value).toBe("1000000000000000000")
+    expect(body.waitForConfirmation).toBe(true)
+  })
+
+  it("includes data and value even when zero", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ transactionHash: "0xabc" }), {
+        status: 200,
+      }),
+    )
+
+    await adapter.sendTransaction({
+      to: "0x1111111111111111111111111111111111111111",
+      data: "0x",
+      value: "0",
+      chainId: 1,
+    })
+
+    const reqInit = fetchSpy.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(reqInit.body as string)
+    expect(body.transaction.data).toBe("0x")
+    expect(body.transaction.value).toBe("0")
+  })
+
+  it("throws on API error", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(new Response("Forbidden", { status: 403 }))
+
+    await expect(
+      adapter.sendTransaction({
+        to: "0x1111111111111111111111111111111111111111",
+        data: "0x",
+        value: "0",
+        chainId: 1,
+      }),
+    ).rejects.toThrow("Bankr sendTransaction failed (403)")
+  })
+})
+
+describe("BankrAdapter signMessage/signTypedData", () => {
+  let fetchSpy: FetchMock
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(global, "fetch")
+  })
+
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
+
+  it("signMessage calls personal_sign via /wallet/sign", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ signature: `0x${"ab".repeat(65)}` }), {
+        status: 200,
+      }),
+    )
+
+    const sig = await adapter.signMessage({ message: "hello" })
+    expect(sig).toBe(`0x${"ab".repeat(65)}`)
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://api.bankr.bot/wallet/sign",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    )
+
+    const reqInit = fetchSpy.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(reqInit.body as string)
+    expect(body.signatureType).toBe("personal_sign")
+    expect(body.message).toBe("hello")
+  })
+
+  it("signTypedData calls eth_signTypedData_v4 via /wallet/sign", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ signature: `0x${"cd".repeat(65)}` }), {
+        status: 200,
+      }),
+    )
+
+    const sig = await adapter.signTypedData({
+      domain: { name: "Test", version: "1", chainId: 1 },
+      types: { Message: [{ name: "content", type: "string" }] },
+      primaryType: "Message",
+      message: { content: "hello" },
+    })
+    expect(sig).toBe(`0x${"cd".repeat(65)}`)
+
+    const reqInit = fetchSpy.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(reqInit.body as string)
+    expect(body.signatureType).toBe("eth_signTypedData_v4")
+    expect(body.typedData.primaryType).toBe("Message")
+    expect(body.typedData.domain.name).toBe("Test")
+  })
+
+  it("signMessage throws on API error", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response("Rate limited", { status: 429 }),
+    )
+
+    await expect(adapter.signMessage({ message: "hello" })).rejects.toThrow(
+      "Bankr signMessage failed (429)",
+    )
+  })
+
+  it("signTypedData throws on API error", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(new Response("Forbidden", { status: 403 }))
+
+    await expect(
+      adapter.signTypedData({
+        domain: { name: "Test" },
+        types: { Message: [{ name: "content", type: "string" }] },
+        primaryType: "Message",
+        message: { content: "hello" },
+      }),
+    ).rejects.toThrow("Bankr signTypedData failed (403)")
   })
 })

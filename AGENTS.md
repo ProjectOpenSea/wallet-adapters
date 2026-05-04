@@ -1,6 +1,6 @@
 # wallet-adapters — Agent Conventions
 
-Provider-agnostic wallet adapter library for signing and sending transactions across managed (Privy, Turnkey, Fireblocks) and local (private key) backends. Supports both viem and ethers.js via optional bridge utilities.
+Provider-agnostic wallet adapter library for signing and sending transactions across managed (Bankr, Privy, Turnkey, Fireblocks) and local (private key) backends. Supports both viem and ethers.js via optional bridge utilities.
 
 ## Quick Reference
 
@@ -20,6 +20,7 @@ pnpm run type-check  # TypeScript type checking
 |------|------|
 | `src/index.ts` | Library entry point — public exports |
 | `src/types/index.ts` | Core interfaces: `WalletAdapter`, `TransactionRequest`, `WalletCapabilities` |
+| `src/adapters/bankr.ts` | Bankr agent wallet API adapter |
 | `src/adapters/privy.ts` | Privy server-side wallet API adapter |
 | `src/adapters/turnkey.ts` | Turnkey HSM-backed signing with P-256 stamp auth |
 | `src/adapters/fireblocks.ts` | Fireblocks enterprise MPC custody adapter |
@@ -41,7 +42,7 @@ pnpm run type-check  # TypeScript type checking
 
 5. **TransactionRequest is extensible.** Optional fields (`gas`, `nonce`, `maxFeePerGas`, `maxPriorityFeePerGas`) let callers pass pre-estimated values to avoid redundant RPC calls.
 
-6. **Environment-based construction.** Each adapter has a `fromEnv()` static factory. `createWalletFromEnv()` auto-detects with priority: Privy > Fireblocks > Turnkey > PrivateKey.
+6. **Environment-based construction.** Each adapter has a `fromEnv()` static factory. `createWalletFromEnv()` auto-detects with priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey.
 
 ## Review Checklist
 
@@ -53,7 +54,7 @@ When reviewing changes to this package, verify:
 
 3. **Security of key material.** Private keys, API secrets, and signing keys must never be logged, included in error messages, or exposed in stack traces.
 
-4. **Cryptographic correctness.** The Turnkey adapter uses P-256 ECDSA with DER-encoded signatures. The Fireblocks adapter uses RS256 (RSASSA-PKCS1-v1_5 with SHA-256) for JWT signing. The private-key adapter uses `@noble/curves/secp256k1` for ECDSA signing.
+4. **Cryptographic correctness.** The Turnkey adapter uses P-256 ECDSA with DER-encoded signatures. The Fireblocks adapter uses RS256 (RSASSA-PKCS1-v1_5 with SHA-256) for JWT signing. The private-key adapter uses `@noble/curves/secp256k1` for ECDSA signing. The Bankr adapter delegates signing to the Bankr Wallet API.
 
 5. **Bridge isolation.** viem and ethers bridges must remain in separate entry points (`./viem`, `./ethers`). They must not be imported by the core adapters.
 
