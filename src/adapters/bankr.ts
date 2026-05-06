@@ -4,6 +4,38 @@
  * Uses Bankr's Wallet API to sign and send transactions via a managed
  * agent wallet. Authentication is done via API key in the X-API-Key header.
  *
+ * # Security model
+ *
+ * This adapter is **signing-only by design.** It exposes only the
+ * primitives an agent needs: `getAddress`, `sendTransaction`,
+ * `signMessage`, `signTypedData`, and `getWalletInfo`. Future
+ * contributors: do not add scope-mutation or key-management surfaces
+ * here — Bankr does not expose them via API anyway, and adding
+ * adapter-side wrappers around dashboard ops would be a footgun.
+ *
+ * Effective hardening is done at the API key configuration level on
+ * bankr.bot/api, not in this adapter:
+ *
+ *   1. For monitoring-only agents, enable the key's `readOnly` flag —
+ *      `/wallet/sign` and `/wallet/submit` will return 403.
+ *
+ *   2. For signing agents, set `allowedRecipients` (an EVM/Solana
+ *      address allowlist) and `allowedIps` (CIDR allowlist) on the
+ *      key. Disable `agentApiEnabled` if the agent does not need
+ *      Bankr's prompt API.
+ *
+ *   3. Set per-key daily message limits at bankr.bot/api.
+ *
+ *   4. Bankr does not expose key-scope flags via API, so
+ *      `getWalletInfo()` cannot verify these settings at runtime —
+ *      `opensea wallet info` reminds the user to verify scope at the
+ *      dashboard. Re-confirm after any key rotation.
+ *
+ *   5. Bankr keys cannot enforce aggregate dollar/ETH spend caps; daily
+ *      message-quota limits are not the same thing. Use the hot/cold
+ *      wallet float pattern documented in
+ *      `packages/skill/opensea-wallet/references/wallet-funding.md`.
+ *
  * Required environment variables:
  *   BANKR_API_KEY — Bankr API key with Wallet API access enabled
  *
@@ -11,7 +43,7 @@
  *   BANKR_API_BASE_URL — Override the Bankr API base URL
  *
  * @see https://docs.bankr.bot/agent-api/authentication
- * @see https://docs.bankr.bot/wallet-api/wallet-info
+ * @see https://docs.bankr.bot/agent-api/access-control
  */
 
 import type {
@@ -21,6 +53,7 @@ import type {
   TransactionResult,
   WalletAdapter,
   WalletCapabilities,
+  WalletInfo,
 } from "../types/index.js"
 
 export interface BankrConfig {
@@ -92,6 +125,15 @@ export class BankrAdapter implements WalletAdapter {
     }
     this.cachedAddress = evmWallet.address
     return evmWallet.address
+  }
+
+  async getWalletInfo(): Promise<WalletInfo> {
+    const address = await this.getAddress()
+    return {
+      provider: "bankr",
+      address,
+      scopeIntrospectable: false,
+    }
   }
 
   async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {

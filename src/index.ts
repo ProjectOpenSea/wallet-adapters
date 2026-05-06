@@ -27,6 +27,7 @@ export type {
   TransactionResult,
   WalletAdapter,
   WalletCapabilities,
+  WalletInfo,
   WalletProvider,
 } from "./types/index.js"
 export { WALLET_PROVIDERS } from "./types/index.js"

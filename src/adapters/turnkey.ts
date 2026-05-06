@@ -5,6 +5,42 @@
  * signing infrastructure. Authentication uses Turnkey's stamp scheme:
  * each request body is hashed and signed with a P-256 ECDSA key.
  *
+ * # Security model
+ *
+ * This adapter is **signing-only by design.** It exposes only the
+ * primitives an agent needs to sign transactions and read user
+ * metadata: `getAddress`, `sendTransaction`, `signMessage`,
+ * `signTypedData`, and `getWalletInfo`. Future contributors: **do not
+ * add `createPolicy`, `deletePolicy`, `createApiKeys`, `updateUser`,
+ * `exportWallet`, or any other administrative activity submission to
+ * this adapter.** If they exist, an agent will find and use them.
+ *
+ * Effective hardening requires creating the API user as a **non-root
+ * user** with a tightly scoped sign-only policy:
+ *
+ *   1. Root users in Turnkey bypass the policy engine entirely. A
+ *      leaked root-user API key has the same blast radius as a raw
+ *      private key — it can sign anything, mutate any policy, mint new
+ *      wallets, and export keys. Do not use a root user as the agent's
+ *      API user.
+ *
+ *   2. Create a non-root API user, then attach a policy that allows
+ *      only `ACTIVITY_TYPE_SIGN_TRANSACTION_V2` (and
+ *      `ACTIVITY_TYPE_SIGN_RAW_PAYLOAD_V2` if EIP-712 is needed) for
+ *      the wallet addresses the agent should be able to sign for.
+ *      Default-deny on everything else; Turnkey policies default to
+ *      deny so this is mostly a matter of writing the allowlist.
+ *
+ *   3. Note that Turnkey policies are stateless per-activity
+ *      evaluators — they cannot enforce aggregate (daily/weekly) caps.
+ *      Use the hot/cold wallet float pattern documented in
+ *      `packages/skill/opensea-wallet/references/wallet-funding.md`
+ *      for aggregate ceilings.
+ *
+ * `getWalletInfo()` calls `whoami` and `get_organization` to surface
+ * whether the API user is in the root quorum, so `opensea wallet info`
+ * can warn loudly if the agent is running as root.
+ *
  * Required environment variables:
  *   TURNKEY_API_PUBLIC_KEY   — Turnkey API public key (hex-encoded)
  *   TURNKEY_API_PRIVATE_KEY  — Turnkey API private key (hex-encoded P-256)
@@ -16,7 +52,8 @@
  *   TURNKEY_API_BASE_URL   — Override the Turnkey API base URL
  *   TURNKEY_PRIVATE_KEY_ID — Turnkey private key ID (for signing with a specific key)
  *
- * @see https://docs.turnkey.com/
+ * @see https://docs.turnkey.com/concepts/policies/overview
+ * @see https://docs.turnkey.com/concepts/users/best-practices
  */
 
 import type {
@@ -26,6 +63,7 @@ import type {
   TransactionResult,
   WalletAdapter,
   WalletCapabilities,
+  WalletInfo,
 } from "../types/index.js"
 import { hashPersonalMessage, hashTypedData } from "../util/eip712.js"
 
@@ -159,6 +197,54 @@ export class TurnkeyAdapter implements WalletAdapter {
 
   async getAddress(): Promise<string> {
     return this.config.walletAddress
+  }
+
+  async getWalletInfo(): Promise<WalletInfo> {
+    const whoamiResponse = await this.signedRequest("/public/v1/query/whoami", {
+      organizationId: this.config.organizationId,
+    })
+
+    if (!whoamiResponse.ok) {
+      const body = await whoamiResponse.text()
+      throw new Error(
+        `Turnkey getWalletInfo whoami failed (${whoamiResponse.status}): ${body}`,
+      )
+    }
+
+    const whoami = (await whoamiResponse.json()) as {
+      organizationId: string
+      organizationName?: string
+      userId: string
+      username?: string
+    }
+
+    const orgResponse = await this.signedRequest(
+      "/public/v1/query/get_organization",
+      { organizationId: this.config.organizationId },
+    )
+
+    if (!orgResponse.ok) {
+      const body = await orgResponse.text()
+      throw new Error(
+        `Turnkey getWalletInfo get_organization failed (${orgResponse.status}): ${body}`,
+      )
+    }
+
+    const orgData = (await orgResponse.json()) as {
+      organizationData?: {
+        rootQuorum?: { userIds?: string[] }
+      }
+    }
+    const rootUserIds = orgData.organizationData?.rootQuorum?.userIds ?? []
+
+    return {
+      provider: "turnkey",
+      address: this.config.walletAddress,
+      organizationId: whoami.organizationId,
+      userId: whoami.userId,
+      username: whoami.username ?? "",
+      isRootUser: rootUserIds.includes(whoami.userId),
+    }
   }
 
   async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {

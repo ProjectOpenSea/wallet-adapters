@@ -4,8 +4,43 @@
  * Uses Fireblocks' REST API to sign and send transactions through their
  * enterprise-grade MPC custody infrastructure.
  *
+ * # Security model
+ *
+ * This adapter is **signing-only by design.** It exposes only the
+ * primitives an agent needs to sign and send transactions:
+ * `getAddress`, `sendTransaction`, `signMessage`, `signTypedData`, and
+ * `getWalletInfo`. Future contributors: **do not add
+ * `createTransactionAuthPolicy`, `updateUser`, `createApiUser`,
+ * `whitelistAddress`, or any other administrative endpoint to this
+ * adapter.** If they exist, an agent will find and use them.
+ *
+ * Effective hardening requires creating the API key with the **`Signer`
+ * role** and nothing broader:
+ *
+ *   1. Fireblocks supports nine API key roles: Admin, Signer,
+ *      NCW_SIGNER, Non-Signing Admin, Approver, Editor, NCW_ADMIN,
+ *      Viewer, and Security Auditor. Only `Signer` (or `NCW_SIGNER`)
+ *      gives signing capability without governance access. Do not use
+ *      `Admin` for an agent.
+ *
+ *   2. Fireblocks does not expose API-user role via API — there is no
+ *      `/v1/users/me` introspection endpoint, and `GET /v1/users/{id}`
+ *      itself requires admin role. `getWalletInfo()` therefore cannot
+ *      verify the calling key's role at runtime; verify it manually at
+ *      console.fireblocks.io and re-confirm whenever you rotate the key.
+ *
+ *   3. TAP changes require admin quorum approval at the console — a
+ *      leaked Signer-role key cannot rewrite TAP. This is structurally
+ *      stronger than Privy or Turnkey, but only if the key is actually
+ *      `Signer` rather than `Admin`.
+ *
+ *   4. TAP rules cap per-tx values; aggregate (daily/weekly) caps are
+ *      not a TAP primitive. Use the hot/cold wallet float pattern
+ *      documented in
+ *      `packages/skill/opensea-wallet/references/wallet-funding.md`.
+ *
  * Required environment variables:
- *   FIREBLOCKS_API_KEY       — Fireblocks API key
+ *   FIREBLOCKS_API_KEY       — Fireblocks API key (must be Signer role)
  *   FIREBLOCKS_API_SECRET    — Fireblocks API secret (RSA private key, PEM-encoded)
  *   FIREBLOCKS_VAULT_ID      — Fireblocks vault account ID
  *
@@ -14,7 +49,8 @@
  *   FIREBLOCKS_ASSET_ID           — Override the Fireblocks asset ID
  *   FIREBLOCKS_MAX_POLL_ATTEMPTS  — Override max polling attempts (default: 60 = 120s)
  *
- * @see https://developers.fireblocks.com/docs/introduction
+ * @see https://developers.fireblocks.com/docs/manage-api-keys
+ * @see https://developers.fireblocks.com/docs/manage-users
  */
 
 import type {
@@ -24,6 +60,7 @@ import type {
   TransactionResult,
   WalletAdapter,
   WalletCapabilities,
+  WalletInfo,
 } from "../types/index.js"
 import { hashPersonalMessage, hashTypedData } from "../util/eip712.js"
 
@@ -184,6 +221,16 @@ export class FireblocksAdapter implements WalletAdapter {
     }
     this.cachedAddress = data[0].address
     return data[0].address
+  }
+
+  async getWalletInfo(): Promise<WalletInfo> {
+    const address = await this.getAddress()
+    return {
+      provider: "fireblocks",
+      address,
+      vaultId: this.config.vaultId,
+      roleIntrospectable: false,
+    }
   }
 
   async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {

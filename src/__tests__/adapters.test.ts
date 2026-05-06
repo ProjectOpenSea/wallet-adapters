@@ -234,6 +234,31 @@ describe("PrivyAdapter signMessage/signTypedData", () => {
     const body = JSON.parse(reqInit.body as string)
     expect(body.method).toBe("personal_sign")
     expect(body.params.message).toBe("hello")
+    // Privy's RPC schema requires params.encoding ("utf-8" or "hex").
+    // Omitting it produces a misleading 400 that looks like a schema bug
+    // but is actually our missing field.
+    expect(body.params.encoding).toBe("utf-8")
+  })
+
+  it("signMessage with Uint8Array passes encoding: 'hex'", async () => {
+    const adapter = new PrivyAdapter({
+      appId: "test-app",
+      appSecret: "test-secret",
+      walletId: "wallet-123",
+    })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ data: { signature: `0x${"ef".repeat(65)}` } }),
+        { status: 200 },
+      ),
+    )
+
+    await adapter.signMessage({ message: new Uint8Array([1, 2, 3]) })
+    const reqInit = fetchSpy.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(reqInit.body as string)
+    expect(body.params.message).toBe("0x010203")
+    expect(body.params.encoding).toBe("hex")
   })
 
   it("signTypedData calls eth_signTypedData_v4 via RPC endpoint", async () => {
@@ -744,5 +769,274 @@ describe("BankrAdapter signMessage/signTypedData", () => {
         message: { content: "hello" },
       }),
     ).rejects.toThrow("Bankr signTypedData failed (403)")
+  })
+})
+
+describe("PrivyAdapter getWalletInfo and 401 hardening hint", () => {
+  let fetchSpy: FetchMock
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(global, "fetch")
+  })
+
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
+
+  it("getWalletInfo flags ownerEnforcesAuthKey: false on unhardened wallet", async () => {
+    const adapter = new PrivyAdapter({
+      appId: "test-app",
+      appSecret: "test-secret",
+      walletId: "wallet-123",
+    })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "wallet-123",
+          address: "0xabc",
+          chain_type: "ethereum",
+          policy_ids: [],
+          additional_signers: [],
+          owner_id: null,
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const info = await adapter.getWalletInfo()
+    expect(info).toEqual({
+      provider: "privy",
+      address: "0xabc",
+      chainType: "ethereum",
+      policyIds: [],
+      ownerKeyId: null,
+      additionalSignerCount: 0,
+      ownerEnforcesAuthKey: false,
+    })
+  })
+
+  it("getWalletInfo flags ownerEnforcesAuthKey: true when owner_id is set", async () => {
+    const adapter = new PrivyAdapter({
+      appId: "test-app",
+      appSecret: "test-secret",
+      walletId: "wallet-123",
+    })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "wallet-123",
+          address: "0xabc",
+          chain_type: "ethereum",
+          policy_ids: ["policy-1"],
+          additional_signers: [{ signer_id: "signer-1" }],
+          owner_id: "kq-123",
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const info = await adapter.getWalletInfo()
+    expect(info).toMatchObject({
+      provider: "privy",
+      ownerKeyId: "kq-123",
+      additionalSignerCount: 1,
+      ownerEnforcesAuthKey: true,
+      policyIds: ["policy-1"],
+    })
+  })
+
+  it("getAddress 401 with 'Invalid app ID or app secret' includes printf hint", async () => {
+    const adapter = new PrivyAdapter({
+      appId: "test-app",
+      appSecret: "test-secret",
+      walletId: "wallet-123",
+    })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response("Invalid app ID or app secret", { status: 401 }),
+    )
+
+    await expect(adapter.getAddress()).rejects.toThrow(/printf %s/)
+  })
+
+  it("getAddress 401 without the trigger body does not include the hint", async () => {
+    const adapter = new PrivyAdapter({
+      appId: "test-app",
+      appSecret: "test-secret",
+      walletId: "wallet-123",
+    })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response("some other 401 reason", { status: 401 }),
+    )
+
+    let caught: Error | undefined
+    try {
+      await adapter.getAddress()
+    } catch (e) {
+      caught = e as Error
+    }
+    expect(caught?.message).toContain("Privy getAddress failed (401)")
+    expect(caught?.message).not.toContain("printf %s")
+  })
+
+  it("does not attach privy-authorization-signature when authSigningKey is unset", async () => {
+    const adapter = new PrivyAdapter({
+      appId: "test-app",
+      appSecret: "test-secret",
+      walletId: "wallet-123",
+    })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ data: { signature: `0x${"00".repeat(65)}` } }),
+        { status: 200 },
+      ),
+    )
+
+    await adapter.signMessage({ message: "hello" })
+    const reqInit = fetchSpy.mock.calls[0][1] as RequestInit
+    const headers = reqInit.headers as Record<string, string>
+    expect(headers["privy-authorization-signature"]).toBeUndefined()
+  })
+})
+
+describe("TurnkeyAdapter getWalletInfo root-user detection", () => {
+  let fetchSpy: FetchMock
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(global, "fetch")
+  })
+
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
+
+  it("flags isRootUser: true when whoami userId is in rootQuorum.userIds", async () => {
+    const adapter = new TurnkeyAdapter({
+      apiPublicKey: `04${"aa".repeat(64)}`,
+      apiPrivateKey: "bb".repeat(32),
+      organizationId: "org-123",
+      walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
+      rpcUrl: "https://rpc.example.com",
+    })
+
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            organizationId: "org-123",
+            organizationName: "Test Org",
+            userId: "user-abc",
+            username: "agent",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            organizationData: {
+              rootQuorum: { userIds: ["user-abc", "user-other"] },
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+
+    const info = await adapter.getWalletInfo()
+    expect(info).toMatchObject({
+      provider: "turnkey",
+      userId: "user-abc",
+      isRootUser: true,
+    })
+  })
+
+  it("flags isRootUser: false when whoami userId is NOT in rootQuorum", async () => {
+    const adapter = new TurnkeyAdapter({
+      apiPublicKey: `04${"aa".repeat(64)}`,
+      apiPrivateKey: "bb".repeat(32),
+      organizationId: "org-123",
+      walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
+      rpcUrl: "https://rpc.example.com",
+    })
+
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            organizationId: "org-123",
+            userId: "user-non-root",
+            username: "agent",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            organizationData: {
+              rootQuorum: { userIds: ["user-other"] },
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+
+    const info = await adapter.getWalletInfo()
+    expect(info).toMatchObject({ isRootUser: false })
+  })
+})
+
+describe("FireblocksAdapter / BankrAdapter getWalletInfo introspection flags", () => {
+  let fetchSpy: FetchMock
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(global, "fetch")
+  })
+
+  afterEach(() => {
+    fetchSpy.mockRestore()
+  })
+
+  it("Fireblocks getWalletInfo signals roleIntrospectable: false", async () => {
+    const adapter = new FireblocksAdapter({
+      apiKey: "k",
+      apiSecret:
+        "-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----",
+      vaultId: "v-1",
+    })
+
+    vi.spyOn(adapter, "getAddress").mockResolvedValueOnce("0xfb")
+
+    const info = await adapter.getWalletInfo()
+    expect(info).toEqual({
+      provider: "fireblocks",
+      address: "0xfb",
+      vaultId: "v-1",
+      roleIntrospectable: false,
+    })
+  })
+
+  it("Bankr getWalletInfo signals scopeIntrospectable: false", async () => {
+    const adapter = new BankrAdapter({ apiKey: "k" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          wallets: [{ chain: "evm", address: "0xbankr" }],
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const info = await adapter.getWalletInfo()
+    expect(info).toEqual({
+      provider: "bankr",
+      address: "0xbankr",
+      scopeIntrospectable: false,
+    })
   })
 })

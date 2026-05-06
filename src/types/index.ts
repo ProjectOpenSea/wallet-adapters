@@ -6,6 +6,66 @@
  * capabilities (EIP-712, EIP-191, batch transactions, etc.).
  */
 
+/**
+ * Provider-shaped wallet metadata used by the `opensea wallet info` CLI
+ * command and by callers auditing the security posture of an agent wallet.
+ *
+ * Each variant surfaces only what the provider's API actually exposes for
+ * the calling credentials. Fields whose absence indicates a hardening gap
+ * (no on-chain policy enforcement, no off-machine credential gating
+ * administrative changes, etc.) are intentionally surfaced as falsy values
+ * rather than hidden, so callers can warn the user.
+ */
+export type WalletInfo =
+  | {
+      provider: "privy"
+      address: string
+      chainType: string
+      policyIds: string[]
+      ownerKeyId: string | null
+      additionalSignerCount: number
+      /**
+       * True iff the wallet has an `owner_id` set, in which case all
+       * `/v1/wallets/{id}/rpc` requests must carry an authorization
+       * signature from the owner's key quorum. False means the env app
+       * secret can sign and rewrite policy unilaterally.
+       */
+      ownerEnforcesAuthKey: boolean
+    }
+  | {
+      provider: "turnkey"
+      address: string
+      organizationId: string
+      userId: string
+      username: string
+      /**
+       * True iff the calling API user is in the organization's root
+       * quorum. Root users bypass Turnkey's policy engine entirely, so a
+       * leaked root API key has the same blast radius as a raw private
+       * key — sign, mutate, export, all unconstrained.
+       */
+      isRootUser: boolean
+    }
+  | {
+      provider: "fireblocks"
+      address: string
+      vaultId: string
+      /**
+       * Fireblocks does not expose API-user role via API. The CLI
+       * surfaces a static reminder to verify the role at the console.
+       */
+      roleIntrospectable: false
+    }
+  | {
+      provider: "bankr"
+      address: string
+      /**
+       * Bankr does not expose key-scope flags via API. The CLI surfaces
+       * a static reminder to verify scope at bankr.bot/api.
+       */
+      scopeIntrospectable: false
+    }
+
 export interface TransactionRequest {
   to: string
   data: string
@@ -60,6 +120,15 @@ export interface WalletAdapter {
 
   /** Sign EIP-712 typed data. Throws if not supported. */
   signTypedData?(request: SignTypedDataRequest): Promise<string>
+
+  /**
+   * Read-only metadata about the wallet's security posture. Used by the
+   * `opensea wallet info` CLI to surface hardening gaps (no policy, no
+   * authorization-key gating, root-user API key, etc.). Optional because
+   * not every adapter has a meaningful introspection surface — the
+   * private-key adapter, for instance, has nothing to report.
+   */
+  getWalletInfo?(): Promise<WalletInfo>
 
   /** Optional RPC URL for read operations (gas estimation, nonce, etc.) */
   getRpcUrl?(): string
