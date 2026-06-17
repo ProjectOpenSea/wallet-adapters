@@ -2,6 +2,17 @@
 
 Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends.
 
+## Why wallet-adapters?
+
+`@opensea/wallet-adapters` is the shared wallet layer used across the OpenSea developer toolchain. Every package that needs to sign transactions depends on the same `WalletAdapter` interface:
+
+- [`@opensea/sdk`](https://github.com/ProjectOpenSea/opensea-js) — TypeScript SDK for buying, selling, and managing NFTs
+- [`@opensea/cli`](https://github.com/ProjectOpenSea/opensea-cli) — command-line interface for the OpenSea API
+- [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/tool-sdk) — SDK for building ERC-8257 AI agent tools
+- [`opensea-skill`](https://github.com/ProjectOpenSea/opensea-skill) — modular AI agent skills for Claude, Devin, and other assistants
+
+By implementing the `WalletAdapter` interface once, a new wallet provider automatically works everywhere — the CLI, the SDK, AI agent tool execution, and any future package that depends on this library.
+
 ## Features
 
 - **Provider-agnostic interface** — unified `WalletAdapter` abstraction with capabilities declaration
@@ -150,6 +161,33 @@ wallet.onResponse = (method, result, durationMs) => {
   console.log(`← ${method} (${durationMs}ms)`, result)
 }
 ```
+
+## Adding a New Provider
+
+To add a wallet provider, implement the `WalletAdapter` interface:
+
+```ts
+import type { WalletAdapter, WalletCapabilities } from "@opensea/wallet-adapters"
+
+export class MyProviderAdapter implements WalletAdapter {
+  readonly name = "my-provider"
+  readonly capabilities: WalletCapabilities = {
+    signMessage: true,
+    signTypedData: true,
+    managedGas: true,
+    managedNonce: true,
+  }
+
+  async getAddress(): Promise<string> { /* ... */ }
+  async sendTransaction(tx) { /* ... */ }
+  async signMessage(request) { /* ... */ }
+  async signTypedData(request) { /* ... */ }
+
+  static fromEnv(): MyProviderAdapter { /* ... */ }
+}
+```
+
+Then register it in the `createWalletFromEnv()` factory in `src/factory.ts` so the CLI and tool-sdk auto-detect it from environment variables.
 
 ## License
 

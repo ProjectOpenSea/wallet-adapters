@@ -8,9 +8,10 @@
  *
  * Required environment variables:
  *   PRIVATE_KEY — Hex-encoded private key (with or without 0x prefix)
- *   RPC_URL    — JSON-RPC endpoint for broadcasting and gas estimation
  *
  * Optional:
+ *   RPC_URL        — JSON-RPC endpoint for broadcasting and gas estimation
+ *                    (required only when sending transactions)
  *   WALLET_ADDRESS — Pre-computed address (skips derivation)
  */
 
@@ -30,7 +31,7 @@ import { bytesToHex, hexToBytes, rlpEncodeEip1559Tx } from "./turnkey.js"
 
 export interface PrivateKeyConfig {
   privateKey: string
-  rpcUrl: string
+  rpcUrl?: string
   address?: string
 }
 
@@ -59,9 +60,6 @@ export class PrivateKeyAdapter implements WalletAdapter {
     if (!privateKey) {
       throw new Error("PRIVATE_KEY environment variable is required")
     }
-    if (!rpcUrl) {
-      throw new Error("RPC_URL environment variable is required")
-    }
 
     const clean = privateKey.startsWith("0x") ? privateKey.slice(2) : privateKey
     if (!/^[0-9a-fA-F]{64}$/.test(clean)) {
@@ -77,7 +75,7 @@ export class PrivateKeyAdapter implements WalletAdapter {
     })
   }
 
-  getRpcUrl(): string {
+  getRpcUrl(): string | undefined {
     return this.config.rpcUrl
   }
 
@@ -99,7 +97,12 @@ export class PrivateKeyAdapter implements WalletAdapter {
     const startTime = Date.now()
 
     const from = await this.getAddress()
-    const { rpcUrl } = this.config
+    const rpcUrl = this.config.rpcUrl
+    if (!rpcUrl) {
+      throw new Error(
+        "RPC_URL is required for sending transactions. Set the RPC_URL environment variable or pass --rpc-url.",
+      )
+    }
 
     let nonce: bigint
     let gasLimit: bigint

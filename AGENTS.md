@@ -26,6 +26,7 @@ pnpm run type-check  # TypeScript type checking
 | `src/adapters/fireblocks.ts` | Fireblocks enterprise MPC custody adapter |
 | `src/adapters/private-key.ts` | Raw private key adapter (dev/testing) |
 | `src/factory.ts` | `createWalletFromEnv()` — auto-detection from env vars |
+| `src/util/eip712.ts` | EIP-712 typed data hashing utilities used by adapters for `signTypedData` |
 | `src/bridges/viem.ts` | Bridge: WalletAdapter → viem WalletClient |
 | `src/bridges/ethers.ts` | Bridge: WalletAdapter → ethers.js Signer |
 | `src/__tests__/` | Vitest test suite |

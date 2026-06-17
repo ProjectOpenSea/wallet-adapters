@@ -42,7 +42,7 @@ export function createWalletFromEnv(): WalletAdapter {
       "  • Fireblocks: FIREBLOCKS_API_KEY, FIREBLOCKS_API_SECRET, FIREBLOCKS_VAULT_ID\n" +
       "  • Turnkey: TURNKEY_API_PUBLIC_KEY, TURNKEY_API_PRIVATE_KEY, TURNKEY_ORGANIZATION_ID, TURNKEY_WALLET_ADDRESS, TURNKEY_RPC_URL\n" +
       "  • Bankr: BANKR_API_KEY\n" +
-      "  • PrivateKey: PRIVATE_KEY, RPC_URL",
+      "  • PrivateKey: PRIVATE_KEY (optionally RPC_URL for sending transactions)",
   )
 }
 

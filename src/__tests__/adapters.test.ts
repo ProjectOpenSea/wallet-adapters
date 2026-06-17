@@ -150,12 +150,23 @@ describe("PrivateKeyAdapter", () => {
     )
   })
 
-  it("fromEnv throws when RPC_URL is missing", () => {
+  it("fromEnv succeeds without RPC_URL (signing-only mode)", () => {
     process.env.PRIVATE_KEY = TEST_PRIVATE_KEY
-    expect(() => PrivateKeyAdapter.fromEnv()).toThrow(
-      "RPC_URL environment variable is required",
-    )
+    const adapter = PrivateKeyAdapter.fromEnv()
+    expect(adapter.getRpcUrl()).toBeUndefined()
     delete process.env.PRIVATE_KEY
+  })
+
+  it("sendTransaction throws when RPC_URL is not configured", async () => {
+    const adapter = new PrivateKeyAdapter({ privateKey: TEST_PRIVATE_KEY })
+    await expect(
+      adapter.sendTransaction({
+        to: "0x0000000000000000000000000000000000000001",
+        data: "0x",
+        value: "0",
+        chainId: 1,
+      }),
+    ).rejects.toThrow("RPC_URL is required for sending transactions")
   })
 
   it("signMessage produces a valid 65-byte signature", async () => {

@@ -131,7 +131,7 @@ export interface WalletAdapter {
   getWalletInfo?(): Promise<WalletInfo>
 
   /** Optional RPC URL for read operations (gas estimation, nonce, etc.) */
-  getRpcUrl?(): string
+  getRpcUrl?(): string | undefined
 
   /** Optional hook called before each adapter request (for metrics/logging) */
   onRequest?: (method: string, params: unknown) => void

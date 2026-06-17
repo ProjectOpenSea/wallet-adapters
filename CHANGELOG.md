@@ -1,5 +1,11 @@
 # @opensea/wallet-adapters
 
+## 0.3.1
+
+### Patch Changes
+
+- c982513: Make `RPC_URL` optional for signing-only workflows. The factory and the private-key adapter no longer require `RPC_URL` when an adapter is only used to sign (not broadcast) transactions, so a key configured purely for signing no longer fails to initialize. A read provider is created lazily and only when a chain operation actually needs one.
+
 ## 0.3.0
 
 ### Minor Changes
