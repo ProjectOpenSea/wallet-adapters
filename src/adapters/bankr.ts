@@ -206,18 +206,26 @@ export class BankrAdapter implements WalletAdapter {
     this.onRequest?.("signTypedData", request)
     const startTime = Date.now()
 
+    // EIP-712 typed data commonly carries BigInt fields (e.g. EIP-3009
+    // `value`/`validAfter`/`validBefore`, chainId). JSON.stringify throws on
+    // BigInt, so serialize them to strings for the Bankr API.
+    const replacer = (_k: string, v: unknown) =>
+      typeof v === "bigint" ? v.toString() : v
     const response = await fetch(`${this.baseUrl}/wallet/sign`, {
       method: "POST",
       headers: this.authHeaders,
-      body: JSON.stringify({
-        signatureType: "eth_signTypedData_v4",
-        typedData: {
-          domain: request.domain,
-          types: request.types,
-          primaryType: request.primaryType,
-          message: request.message,
+      body: JSON.stringify(
+        {
+          signatureType: "eth_signTypedData_v4",
+          typedData: {
+            domain: request.domain,
+            types: request.types,
+            primaryType: request.primaryType,
+            message: request.message,
+          },
         },
-      }),
+        replacer,
+      ),
     })
 
     if (!response.ok) {

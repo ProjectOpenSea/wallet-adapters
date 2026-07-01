@@ -1,5 +1,11 @@
 # @opensea/wallet-adapters
 
+## 0.3.2
+
+### Patch Changes
+
+- 158f38f: Fix `BankrAdapter.signTypedData` throwing on EIP-712 payloads containing BigInt fields (e.g. EIP-3009 `value`/`validAfter`/`validBefore`, `chainId`). BigInts are now serialized to strings before sending to the Bankr `/wallet/sign` API.
+
 ## 0.3.1
 
 ### Patch Changes

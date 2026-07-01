@@ -755,6 +755,35 @@ describe("BankrAdapter signMessage/signTypedData", () => {
     expect(body.typedData.domain.name).toBe("Test")
   })
 
+  it("signTypedData serializes BigInt fields to strings (EIP-3009)", async () => {
+    const adapter = new BankrAdapter({ apiKey: "test-key" })
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ signature: `0x${"cd".repeat(65)}` }), {
+        status: 200,
+      }),
+    )
+
+    const sig = await adapter.signTypedData({
+      domain: { name: "USD Coin", version: "2", chainId: 8453n },
+      types: {
+        TransferWithAuthorization: [
+          { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
+        ],
+      },
+      primaryType: "TransferWithAuthorization",
+      message: { value: 0n, validAfter: 1720000000n },
+    })
+    expect(sig).toBe(`0x${"cd".repeat(65)}`)
+
+    const reqInit = fetchSpy.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(reqInit.body as string)
+    expect(body.typedData.domain.chainId).toBe("8453")
+    expect(body.typedData.message.value).toBe("0")
+    expect(body.typedData.message.validAfter).toBe("1720000000")
+  })
+
   it("signMessage throws on API error", async () => {
     const adapter = new BankrAdapter({ apiKey: "test-key" })
 
