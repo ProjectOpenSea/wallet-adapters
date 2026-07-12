@@ -1,5 +1,12 @@
 # @opensea/wallet-adapters
 
+## 0.3.3
+
+### Patch Changes
+
+- 569fd4f: Harden EIP-712 encoding of non-integer types so malformed input throws instead of being silently misencoded. The `address` encoder now validates a 0x-prefixed hex string of at most 20 bytes (previously `.replace("0x", "")` stripped only the first `0x` anywhere in the string and non-hex characters were silently encoded as zero); `bytes`/`bytesN` values with odd-length or non-hex input, or wider than 32 bytes, are rejected; and the shared hex parser rejects odd-length and non-hex strings rather than truncating or storing `NaN`. This complements the integer range checks by ensuring every EIP-712 field either encodes exactly what the caller intended or throws.
+- a541527: Validate integer values before EIP-712 encoding instead of silently wrapping out-of-domain values. A negative value for an unsigned `uint*` type now throws (previously it wrapped into a huge positive integer via two's complement, e.g. turning a negative token amount into a near-max transfer authorization). Values that exceed the declared width — `uint`/`int` beyond their range, including sub-256 widths like `uint8`/`int8` — are also rejected with a clear error. Two's-complement encoding is retained for in-range signed `int*` values, as required by EIP-712.
+
 ## 0.3.2
 
 ### Patch Changes

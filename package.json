@@ -1,6 +1,6 @@
 {
   "name": "@opensea/wallet-adapters",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "description": "Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends",
   "license": "MIT",
@@ -30,10 +30,10 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
-    "lint": "biome check --config-path . .",
-    "lint:fix": "biome check --config-path . --write .",
-    "format": "biome format --config-path . --write .",
-    "format:check": "biome format --config-path . .",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -63,7 +63,7 @@
     "typescript": "6.0.2",
     "viem": "2.31.3",
     "vitest": "3.2.4",
-    "@biomejs/biome": "^2.4.10"
+    "@biomejs/biome": "^2.5.2"
   },
   "engines": {
     "node": ">=18.0.0"

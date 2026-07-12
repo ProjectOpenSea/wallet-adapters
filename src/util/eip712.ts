@@ -158,9 +158,14 @@ function encodeValue(
     return hashStruct(type, value as Record<string, unknown>, types)
   }
   if (type === "address") {
-    const addr = (value as string).toLowerCase().replace("0x", "")
+    const raw = value as string
+    const hex =
+      raw.startsWith("0x") || raw.startsWith("0X") ? raw.slice(2) : raw
+    if (!/^[0-9a-fA-F]{1,40}$/.test(hex)) {
+      throw new Error(`EIP-712: invalid address value ${raw}`)
+    }
     const padded = new Uint8Array(32)
-    padded.set(hexToBytes(addr.padStart(40, "0")), 12)
+    padded.set(hexToBytes(hex.toLowerCase().padStart(40, "0")), 12)
     return padded
   }
   if (type === "bool") {
@@ -169,8 +174,31 @@ function encodeValue(
     return padded
   }
   if (type.startsWith("uint") || type.startsWith("int")) {
-    const padded = new Uint8Array(32)
+    const signed = type.startsWith("int")
+    const widthStr = type.slice(signed ? 3 : 4)
+    const bits = widthStr === "" ? 256 : Number(widthStr)
+    if (!Number.isInteger(bits) || bits < 8 || bits > 256 || bits % 8 !== 0) {
+      throw new Error(`EIP-712: unsupported integer type ${type}`)
+    }
     const n = BigInt(value as string | number | bigint)
+    // Reject values outside the type's domain instead of silently wrapping.
+    // A negative value for an unsigned type, or any value beyond the declared
+    // width, would otherwise be misencoded — e.g. a negative token amount would
+    // wrap into a near-max positive transfer via two's complement.
+    if (signed) {
+      const max = (1n << BigInt(bits - 1)) - 1n
+      const min = -(1n << BigInt(bits - 1))
+      if (n < min || n > max) {
+        throw new Error(`EIP-712: value ${n} is out of range for ${type}`)
+      }
+    } else if (n < 0n) {
+      throw new Error(`EIP-712: cannot encode negative value ${n} as ${type}`)
+    } else if (n > (1n << BigInt(bits)) - 1n) {
+      throw new Error(`EIP-712: value ${n} is out of range for ${type}`)
+    }
+    // EIP-712 encodes integers sign-extended to 256 bits, big-endian; for a
+    // negative signed value that is the two's-complement representation.
+    const padded = new Uint8Array(32)
     const hex = (n < 0n ? n + (1n << 256n) : n).toString(16).padStart(64, "0")
     padded.set(hexToBytes(hex), 0)
     return padded
@@ -178,6 +206,9 @@ function encodeValue(
   if (type.startsWith("bytes")) {
     const v = value as string
     const bytes = hexToBytes(v.startsWith("0x") ? v.slice(2) : v)
+    if (bytes.length > 32) {
+      throw new Error(`EIP-712: ${type} value exceeds 32 bytes`)
+    }
     const padded = new Uint8Array(32)
     padded.set(bytes, 0)
     return padded
@@ -187,6 +218,14 @@ function encodeValue(
 
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex
+  // Reject malformed hex instead of silently truncating an odd-length string
+  // or storing NaN (which coerces to 0) for non-hex characters.
+  if (clean.length % 2 !== 0) {
+    throw new Error("EIP-712: hex string has an odd length")
+  }
+  if (clean.length > 0 && !/^[0-9a-fA-F]+$/.test(clean)) {
+    throw new Error("EIP-712: hex string contains non-hex characters")
+  }
   const bytes = new Uint8Array(clean.length / 2)
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16)
