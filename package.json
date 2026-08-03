@@ -1,6 +1,6 @@
 {
   "name": "@opensea/wallet-adapters",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "type": "module",
   "description": "Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends",
   "license": "MIT",
@@ -63,7 +63,7 @@
     "typescript": "6.0.2",
     "viem": "2.31.3",
     "vitest": "3.2.4",
-    "@biomejs/biome": "^2.5.2"
+    "@biomejs/biome": "2.5.2"
   },
   "engines": {
     "node": ">=18.0.0"

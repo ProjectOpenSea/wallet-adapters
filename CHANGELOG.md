@@ -1,5 +1,11 @@
 # @opensea/wallet-adapters
 
+## 0.3.4
+
+### Patch Changes
+
+- 7d2dbef: Sync OpenAPI spec: add `stablechain` to `ChainIdentifier`, add `Chain.StableChain` (chain id 988) to the SDK and generated chain maps
+
 ## 0.3.3
 
 ### Patch Changes
