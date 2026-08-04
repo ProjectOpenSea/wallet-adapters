@@ -108,12 +108,30 @@ export class EthersAdapterSigner {
       domain,
       types,
       message: value,
-      primaryType:
-        primaryType ?? Object.keys(types).find(t => t !== "EIP712Domain") ?? "",
+      primaryType: primaryType ?? inferPrimaryType(types),
     })
   }
 
   connect(provider: any): EthersAdapterSigner {
     return new EthersAdapterSigner(this.adapter, provider)
   }
+}
+
+/**
+ * Infer the EIP-712 primary type the way ethers.js does: the struct that is not
+ * referenced as a field type by any other struct (the root of the type graph).
+ * The previous heuristic took the first key in `types`, which signs the wrong
+ * struct when the root is not declared first (e.g. dependencies listed above it).
+ */
+function inferPrimaryType(types: Record<string, any>): string {
+  const named = Object.keys(types).filter(t => t !== "EIP712Domain")
+  const referenced = new Set<string>()
+  for (const name of named) {
+    for (const field of types[name] ?? []) {
+      const base = String(field.type).replace(/(\[\d*\])+$/, "")
+      if (base in types) referenced.add(base)
+    }
+  }
+  const roots = named.filter(t => !referenced.has(t))
+  return roots[0] ?? named[0] ?? ""
 }

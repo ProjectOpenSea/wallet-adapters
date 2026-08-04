@@ -119,6 +119,28 @@ describe("EthersAdapterSigner", () => {
     })
   })
 
+  it("infers the root primaryType when omitted, not the first types key", async () => {
+    const adapter = createMockAdapter()
+    const signer = walletAdapterToEthersSigner(adapter, {})
+    // `Person` (a dependency) is declared before `Mail` (the root). The primary
+    // type is the struct not referenced by any other, i.e. `Mail` - not the
+    // first key.
+    const types = {
+      Person: [{ name: "wallet", type: "address" }],
+      Mail: [
+        { name: "from", type: "Person" },
+        { name: "contents", type: "string" },
+      ],
+    }
+    await signer.signTypedData({ name: "Test" }, types, {
+      from: { wallet: "0x1234567890abcdef1234567890abcdef12345678" },
+      contents: "hi",
+    })
+    expect(adapter.signTypedData).toHaveBeenCalledWith(
+      expect.objectContaining({ primaryType: "Mail" }),
+    )
+  })
+
   it("connect returns new signer with different provider", () => {
     const adapter = createMockAdapter()
     const signer = walletAdapterToEthersSigner(adapter, { id: 1 })
