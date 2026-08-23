@@ -1,5 +1,16 @@
 # @opensea/wallet-adapters
 
+## 0.3.5
+
+### Patch Changes
+
+- f1882a8: Bridges: infer the EIP-712 primary type as the root of the type graph rather than the first key in `types`. Signing without an explicit `primaryType` picked the first declared struct, so listing a dependency before the root (`Person` above `Mail`) signed the dependency. Now mirrors ethers.js. Thanks to @Nexory (ProjectOpenSea/wallet-adapters#2).
+- 93f028c: `type-check` now covers this package's `test/` directory, through a `tsconfig.check.json` matching
+  the one sdk and api-types already use. It previously compiled `src/` only, so nothing typechecked
+  its test files.
+
+  Split out of the cli changeset for the same change: wallet-adapters is held out of that release.
+
 ## 0.3.4
 
 ### Patch Changes

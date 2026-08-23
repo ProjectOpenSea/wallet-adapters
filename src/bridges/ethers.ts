@@ -108,12 +108,63 @@ export class EthersAdapterSigner {
       domain,
       types,
       message: value,
-      primaryType:
-        primaryType ?? Object.keys(types).find(t => t !== "EIP712Domain") ?? "",
+      primaryType: primaryType ?? inferPrimaryType(types),
     })
   }
 
   connect(provider: any): EthersAdapterSigner {
     return new EthersAdapterSigner(this.adapter, provider)
   }
+}
+
+/**
+ * Kept in step with `inferPrimaryType` in @opensea/sdk (`src/utils/eip712.ts`),
+ * which cannot import this one without taking a dependency on this package.
+ * Change both together.
+ *
+ * Infer the EIP-712 primary type the way ethers.js does: the struct that is not
+ * referenced as a field type by any other struct (the root of the type graph).
+ * The previous heuristic took the first key in `types`, which signs the wrong
+ * struct when the root is not declared first (e.g. dependencies listed above it).
+ */
+function inferPrimaryType(types: Record<string, unknown>): string {
+  const named = Object.keys(types).filter(t => t !== "EIP712Domain")
+  const referenced = new Set<string>()
+  for (const name of named) {
+    const fields = types[name]
+    if (!Array.isArray(fields)) continue
+    for (const field of fields) {
+      // Strips trailing array suffixes, including repeated ones: Person[],
+      // Person[2] and Mail[2][] all reduce to the struct name. EIP-712 field
+      // types are an atomic type, an array of those, or a struct name, so
+      // there is no nesting to unwrap beyond this. Solidity tuple syntax is
+      // not part of the format and ethers rejects it as an unknown type.
+      const base = String((field as { type?: unknown }).type).replace(
+        /(\[\d*\])+$/,
+        "",
+      )
+      if (base in types) referenced.add(base)
+    }
+  }
+  if (named.length === 0) {
+    return ""
+  }
+  const roots = named.filter(t => !referenced.has(t))
+  // Falling back to the first declared type here would re-introduce exactly the
+  // bug this function exists to fix, and silently sign the wrong struct. Both
+  // shapes are invalid EIP-712 and ethers itself rejects them ("circular type
+  // reference", "ambiguous primary types or unused types"), so refusing loses
+  // nothing for an ethers-backed adapter and prevents a wrong signature from an
+  // adapter that does not validate.
+  if (roots.length === 0) {
+    throw new Error(
+      `Cannot infer EIP-712 primaryType: every type is referenced by another, so the type graph is circular (${named.join(", ")}). Pass primaryType explicitly.`,
+    )
+  }
+  if (roots.length > 1) {
+    throw new Error(
+      `Cannot infer EIP-712 primaryType: ${roots.join(", ")} are all unreferenced, so the root is ambiguous. Pass primaryType explicitly.`,
+    )
+  }
+  return roots[0]
 }

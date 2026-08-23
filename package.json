@@ -1,6 +1,6 @@
 {
   "name": "@opensea/wallet-adapters",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "type": "module",
   "description": "Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends",
   "license": "MIT",
@@ -34,7 +34,7 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc -p tsconfig.check.json"
   },
   "dependencies": {
     "@noble/hashes": "2.0.1",

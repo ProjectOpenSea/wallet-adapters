@@ -1,12 +1,16 @@
 # @opensea/wallet-adapters
 
+> **Read-only mirror.** This package is developed in a private monorepo and mirrored to [ProjectOpenSea/wallet-adapters](https://github.com/ProjectOpenSea/wallet-adapters) when a version is released, so the public code can trail the internal main branch by weeks.
+>
+> Pull requests opened on the mirror cannot be merged there. They are read, and a fix worth taking is recreated in the monorepo. Because a fix that has landed internally is not public until the next release, filing an issue before writing a patch is the quickest way to find out whether a bug is already fixed.
+
 Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends.
 
 ## Why wallet-adapters?
 
 `@opensea/wallet-adapters` is the shared wallet layer used across the OpenSea developer toolchain. Every package that needs to sign transactions depends on the same `WalletAdapter` interface:
 
-- [`@opensea/sdk`](https://github.com/ProjectOpenSea/opensea-js) — TypeScript SDK for buying, selling, and managing NFTs
+- [`@opensea/sdk`](https://github.com/ProjectOpenSea/opensea-sdk) — TypeScript SDK for buying, selling, and managing NFTs
 - [`@opensea/cli`](https://github.com/ProjectOpenSea/opensea-cli) — command-line interface for the OpenSea API
 - [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/tool-sdk) — SDK for building ERC-8257 AI agent tools
 - [`opensea-skill`](https://github.com/ProjectOpenSea/opensea-skill) — modular AI agent skills for Claude, Devin, and other assistants

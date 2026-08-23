@@ -126,4 +126,109 @@ describe("EthersAdapterSigner", () => {
     expect(newSigner).toBeInstanceOf(EthersAdapterSigner)
     expect(newSigner.provider).toEqual({ id: 2 })
   })
+
+  it("signs the root struct when a dependency is declared before it", async () => {
+    // EIP-712 defines the primary type as the struct nothing else references.
+    // Person is declared first here, so the old first-key heuristic signed
+    // "Person" instead of "Mail".
+    const captured: { primaryType?: string } = {}
+    const adapter = {
+      getAddress: async () => "0x1111111111111111111111111111111111111111",
+      signTypedData: async (args: { primaryType?: string }) => {
+        captured.primaryType = args.primaryType
+        return "0xsig"
+      },
+    }
+
+    const signer = new EthersAdapterSigner(adapter as never, undefined)
+    await signer.signTypedData(
+      { name: "Test", version: "1", chainId: 1 },
+      {
+        Person: [
+          { name: "name", type: "string" },
+          { name: "wallet", type: "address" },
+        ],
+        Mail: [
+          { name: "from", type: "Person" },
+          { name: "to", type: "Person" },
+          { name: "contents", type: "string" },
+        ],
+      },
+      {
+        from: {
+          name: "A",
+          wallet: "0x1111111111111111111111111111111111111111",
+        },
+        to: { name: "B", wallet: "0x2222222222222222222222222222222222222222" },
+        contents: "hi",
+      },
+    )
+
+    expect(captured.primaryType).toBe("Mail")
+  })
+
+  function signerCapturing(captured: { primaryType?: string }) {
+    const adapter = {
+      getAddress: async () => "0x1111111111111111111111111111111111111111",
+      signTypedData: async (args: { primaryType?: string }) => {
+        captured.primaryType = args.primaryType
+        return "0xsig"
+      },
+    }
+    return new EthersAdapterSigner(adapter as never, undefined)
+  }
+
+  it("respects an explicitly passed primaryType over inference", async () => {
+    const captured: { primaryType?: string } = {}
+    await signerCapturing(captured).signTypedData(
+      { name: "Test", version: "1", chainId: 1 },
+      {
+        Person: [{ name: "name", type: "string" }],
+        Mail: [{ name: "from", type: "Person" }],
+      },
+      { from: { name: "A" } },
+      "Person",
+    )
+    expect(captured.primaryType).toBe("Person")
+  })
+
+  it("returns an empty primaryType when only EIP712Domain is declared", async () => {
+    const captured: { primaryType?: string } = {}
+    await signerCapturing(captured).signTypedData(
+      { name: "Test", version: "1", chainId: 1 },
+      { EIP712Domain: [{ name: "name", type: "string" }] },
+      {},
+    )
+    expect(captured.primaryType).toBe("")
+  })
+
+  it("refuses to guess when two unreferenced structs both qualify as root", async () => {
+    // ethers rejects this input too ("ambiguous primary types or unused
+    // types"), so guessing here would only mislead an adapter that does not
+    // validate.
+    const captured: { primaryType?: string } = {}
+    await expect(
+      signerCapturing(captured).signTypedData(
+        { name: "Test", version: "1", chainId: 1 },
+        {
+          Alpha: [{ name: "n", type: "string" }],
+          Beta: [{ name: "n", type: "string" }],
+        },
+        { n: "x" },
+      ),
+    ).rejects.toThrow(/ambiguous/)
+    expect(captured.primaryType).toBeUndefined()
+  })
+
+  it("refuses to guess when the type graph is circular", async () => {
+    const captured: { primaryType?: string } = {}
+    await expect(
+      signerCapturing(captured).signTypedData(
+        { name: "Test", version: "1", chainId: 1 },
+        { Person: [{ name: "friend", type: "Person" }] },
+        {},
+      ),
+    ).rejects.toThrow(/circular/)
+    expect(captured.primaryType).toBeUndefined()
+  })
 })
