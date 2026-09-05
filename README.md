@@ -193,6 +193,10 @@ export class MyProviderAdapter implements WalletAdapter {
 
 Then register it in the `createWalletFromEnv()` factory in `src/factory.ts` so the CLI and tool-sdk auto-detect it from environment variables.
 
+## Security
+
+Found a vulnerability? Report it through OpenSea's Bugcrowd program at https://bugcrowd.com/engagements/opensea rather than opening a public issue. See [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT
