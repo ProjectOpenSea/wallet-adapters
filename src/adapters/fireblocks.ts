@@ -54,11 +54,11 @@
  */
 
 import type {
+  EvmTransactionRequest,
+  EvmWalletAdapter,
   SignMessageRequest,
   SignTypedDataRequest,
-  TransactionRequest,
   TransactionResult,
-  WalletAdapter,
   WalletCapabilities,
   WalletInfo,
 } from "../types/index.js"
@@ -79,7 +79,9 @@ export interface FireblocksConfig {
 
 const FIREBLOCKS_API_BASE = "https://api.fireblocks.io"
 
-export class FireblocksAdapter implements WalletAdapter {
+export class FireblocksAdapter implements EvmWalletAdapter {
+  readonly chainType = "evm" as const
+
   readonly name = "fireblocks"
   readonly capabilities: WalletCapabilities = {
     signMessage: true,
@@ -233,7 +235,7 @@ export class FireblocksAdapter implements WalletAdapter {
     }
   }
 
-  async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {
+  async sendTransaction(tx: EvmTransactionRequest): Promise<TransactionResult> {
     this.onRequest?.("sendTransaction", tx)
     const startTime = Date.now()
 

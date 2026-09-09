@@ -18,7 +18,7 @@
  * ethers v6 is a peer dependency — consumers must install it separately.
  */
 
-import type { WalletAdapter } from "../types/index.js"
+import type { EvmWalletAdapter } from "../types/index.js"
 
 /**
  * Create an ethers.js-compatible Signer from a WalletAdapter.
@@ -30,17 +30,17 @@ import type { WalletAdapter } from "../types/index.js"
  * - signTypedData(domain, types, value) — only if adapter supports it
  */
 export function walletAdapterToEthersSigner(
-  adapter: WalletAdapter,
+  adapter: EvmWalletAdapter,
   provider: any,
 ): EthersAdapterSigner {
   return new EthersAdapterSigner(adapter, provider)
 }
 
 export class EthersAdapterSigner {
-  readonly adapter: WalletAdapter
+  readonly adapter: EvmWalletAdapter
   readonly provider: any
 
-  constructor(adapter: WalletAdapter, provider: any) {
+  constructor(adapter: EvmWalletAdapter, provider: any) {
     this.adapter = adapter
     this.provider = provider
   }

@@ -47,11 +47,11 @@
  */
 
 import type {
+  EvmTransactionRequest,
+  EvmWalletAdapter,
   SignMessageRequest,
   SignTypedDataRequest,
-  TransactionRequest,
   TransactionResult,
-  WalletAdapter,
   WalletCapabilities,
   WalletInfo,
 } from "../types/index.js"
@@ -63,7 +63,9 @@ export interface BankrConfig {
 
 const BANKR_API_BASE = "https://api.bankr.bot"
 
-export class BankrAdapter implements WalletAdapter {
+export class BankrAdapter implements EvmWalletAdapter {
+  readonly chainType = "evm" as const
+
   readonly name = "bankr"
   readonly capabilities: WalletCapabilities = {
     signMessage: true,
@@ -136,7 +138,7 @@ export class BankrAdapter implements WalletAdapter {
     }
   }
 
-  async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {
+  async sendTransaction(tx: EvmTransactionRequest): Promise<TransactionResult> {
     this.onRequest?.("sendTransaction", tx)
     const startTime = Date.now()
 

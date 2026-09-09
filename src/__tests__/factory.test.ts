@@ -11,6 +11,7 @@ describe("detectProvider", () => {
     delete process.env.PRIVY_APP_ID
     delete process.env.PRIVY_APP_SECRET
     delete process.env.PRIVY_WALLET_ID
+    delete process.env.PRIVY_SVM_WALLET_ID
     delete process.env.FIREBLOCKS_API_KEY
     delete process.env.FIREBLOCKS_API_SECRET
     delete process.env.FIREBLOCKS_VAULT_ID
@@ -76,12 +77,17 @@ describe("createWalletFromEnv", () => {
     delete process.env.PRIVY_APP_ID
     delete process.env.PRIVY_APP_SECRET
     delete process.env.PRIVY_WALLET_ID
+    delete process.env.PRIVY_SVM_WALLET_ID
     delete process.env.PRIVATE_KEY
     delete process.env.RPC_URL
   })
 
   it("throws descriptive error when no provider configured", () => {
-    expect(() => createWalletFromEnv()).toThrow("No wallet provider configured")
+    // Names the chain family, since a Solana wallet can be configured while no EVM one is.
+    expect(() => createWalletFromEnv()).toThrow(
+      "No EVM wallet provider configured",
+    )
+    expect(() => createWalletFromEnv()).toThrow("PRIVY_WALLET_ID")
   })
 
   it("creates BankrAdapter when BANKR_API_KEY set", () => {
@@ -132,5 +138,79 @@ describe("createWalletForProvider", () => {
     expect(() => createWalletForProvider("unknown" as any)).toThrow(
       "Unknown wallet provider",
     )
+  })
+})
+
+describe("chain-family selection", () => {
+  afterEach(() => {
+    delete process.env.PRIVY_APP_ID
+    delete process.env.PRIVY_APP_SECRET
+    delete process.env.PRIVY_WALLET_ID
+    delete process.env.PRIVY_SVM_WALLET_ID
+  })
+
+  function configurePrivy({ evm, svm }: { evm?: boolean; svm?: boolean }) {
+    process.env.PRIVY_APP_ID = "app"
+    process.env.PRIVY_APP_SECRET = "secret"
+    if (evm) process.env.PRIVY_WALLET_ID = "evm-wallet"
+    if (svm) process.env.PRIVY_SVM_WALLET_ID = "svm-wallet"
+  }
+
+  it("detects an SVM provider only from the SVM wallet id", () => {
+    configurePrivy({ evm: true })
+
+    expect(detectProvider()).toBe("privy")
+    expect(detectProvider({ chainType: "svm" })).toBeNull()
+  })
+
+  it("serves both chains when both wallets are configured", () => {
+    // The reason for a second variable rather than a chain argument over one id: a Privy wallet
+    // is bound to one chain_type, so these are two different wallets.
+    configurePrivy({ evm: true, svm: true })
+
+    expect(createWalletFromEnv().chainType).toBe("evm")
+    expect(createWalletFromEnv({ chainType: "svm" }).chainType).toBe("svm")
+    expect(detectProvider({ chainType: "svm" })).toBe("privy")
+  })
+
+  it("defaults to EVM when no selector is passed", () => {
+    configurePrivy({ evm: true, svm: true })
+
+    const adapter = createWalletFromEnv()
+
+    expect(adapter.chainType).toBe("evm")
+    expect(adapter.name).toBe("privy")
+  })
+
+  it("points at the selector when only a Solana wallet is configured", () => {
+    configurePrivy({ svm: true })
+
+    expect(() => createWalletFromEnv()).toThrow(
+      "No EVM wallet provider configured",
+    )
+    expect(() => createWalletFromEnv()).toThrow(
+      'createWalletFromEnv({ chainType: "svm" })',
+    )
+  })
+
+  it("explains the separate wallet when only an EVM wallet is configured", () => {
+    configurePrivy({ evm: true })
+
+    expect(() => createWalletFromEnv({ chainType: "svm" })).toThrow(
+      "No Solana wallet provider configured",
+    )
+    expect(() => createWalletFromEnv({ chainType: "svm" })).toThrow(
+      "PRIVY_SVM_WALLET_ID",
+    )
+  })
+
+  it("refuses a Solana wallet from a provider that has no SVM adapter", () => {
+    process.env.BANKR_API_KEY = "key"
+
+    expect(() =>
+      createWalletForProvider("bankr", { chainType: "svm" }),
+    ).toThrow('Wallet provider "bankr" has no Solana adapter')
+
+    delete process.env.BANKR_API_KEY
   })
 })

@@ -307,9 +307,17 @@ describe("PrivyAdapter signMessage/signTypedData", () => {
     const reqInit = fetchSpy.mock.calls[0][1] as RequestInit
     const body = JSON.parse(reqInit.body as string)
     expect(body.method).toBe("eth_signTypedData_v4")
-    const typedData = JSON.parse(body.params.typedData)
-    expect(typedData.primaryType).toBe("Message")
-    expect(typedData.domain.name).toBe("Test")
+
+    // `typed_data` is a nested object with `primary_type`. This previously read
+    // `JSON.parse(body.params.typedData)` and asserted `primaryType`, parsing back the same
+    // camelCase JSON string the adapter had written, so it passed against a body Privy rejects.
+    // `privy-rpc-shapes.test.ts` pins these names to Privy's own published types.
+    expect(body.params.typedData).toBeUndefined()
+    expect(typeof body.params.typed_data).toBe("object")
+    expect(body.params.typed_data.primary_type).toBe("Message")
+    expect(body.params.typed_data.primaryType).toBeUndefined()
+    expect(body.params.typed_data.domain.name).toBe("Test")
+    expect(body.params.typed_data.message).toEqual({ content: "hello" })
   })
 })
 

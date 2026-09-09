@@ -17,10 +17,10 @@
  * viem is a peer dependency — consumers must install it separately.
  */
 
-import type { WalletAdapter } from "../types/index.js"
+import type { EvmWalletAdapter } from "../types/index.js"
 
 export async function walletAdapterToViemClient(
-  adapter: WalletAdapter,
+  adapter: EvmWalletAdapter,
   chain: import("viem").Chain,
   rpcUrl?: string,
 ): Promise<import("viem").WalletClient> {

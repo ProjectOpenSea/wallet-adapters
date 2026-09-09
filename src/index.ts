@@ -9,20 +9,36 @@ export {
 } from "./adapters/fireblocks.js"
 export type { PrivateKeyConfig } from "./adapters/private-key.js"
 export { PrivateKeyAdapter } from "./adapters/private-key.js"
-// Adapters
 export type { PrivyConfig } from "./adapters/privy.js"
 export { PrivyAdapter } from "./adapters/privy.js"
+// Adapters
+export {
+  buildSvmSignMessageParams,
+  buildSvmTransactionParams,
+  PrivySvmAdapter,
+  SOLANA_MAINNET_CAIP2,
+  toBase64Transaction,
+} from "./adapters/privy-svm.js"
 export type { TurnkeyConfig } from "./adapters/turnkey.js"
 export { TurnkeyAdapter } from "./adapters/turnkey.js"
 // Factory
+export type { WalletSelector } from "./factory.js"
 export {
   createWalletForProvider,
   createWalletFromEnv,
   detectProvider,
 } from "./factory.js"
 export type {
+  BaseWalletAdapter,
+  ChainType,
+  EvmTransactionRequest,
+  EvmWalletAdapter,
   SignMessageRequest,
   SignTypedDataRequest,
+  SvmSignedTransaction,
+  SvmTransactionRequest,
+  SvmWalletAdapter,
+  SvmWalletCapabilities,
   TransactionRequest,
   TransactionResult,
   WalletAdapter,
@@ -30,4 +46,10 @@ export type {
   WalletInfo,
   WalletProvider,
 } from "./types/index.js"
-export { WALLET_PROVIDERS } from "./types/index.js"
+export {
+  isEvmAdapter,
+  isSvmAdapter,
+  requireEvmAdapter,
+  WALLET_PROVIDERS,
+  WrongChainTypeError,
+} from "./types/index.js"

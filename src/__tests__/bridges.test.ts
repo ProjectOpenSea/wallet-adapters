@@ -4,13 +4,16 @@ import {
   walletAdapterToEthersSigner,
 } from "../bridges/ethers.js"
 import { walletAdapterToViemClient } from "../bridges/viem.js"
-import type { WalletAdapter } from "../types/index.js"
+import type { EvmWalletAdapter } from "../types/index.js"
 
 function createMockAdapter(
-  overrides: Partial<WalletAdapter> = {},
-): WalletAdapter {
+  overrides: Partial<EvmWalletAdapter> = {},
+): EvmWalletAdapter {
   return {
     name: "mock",
+    // The bridges are ethers and viem, so they take the EVM member of the union rather than the
+    // union itself. Narrowing here is what lets the fixture keep signTypedData.
+    chainType: "evm",
     capabilities: {
       signMessage: true,
       signTypedData: true,

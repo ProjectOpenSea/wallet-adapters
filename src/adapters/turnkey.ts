@@ -57,11 +57,11 @@
  */
 
 import type {
+  EvmTransactionRequest,
+  EvmWalletAdapter,
   SignMessageRequest,
   SignTypedDataRequest,
-  TransactionRequest,
   TransactionResult,
-  WalletAdapter,
   WalletCapabilities,
   WalletInfo,
 } from "../types/index.js"
@@ -79,7 +79,9 @@ export interface TurnkeyConfig {
 
 const TURNKEY_API_BASE = "https://api.turnkey.com"
 
-export class TurnkeyAdapter implements WalletAdapter {
+export class TurnkeyAdapter implements EvmWalletAdapter {
+  readonly chainType = "evm" as const
+
   readonly name = "turnkey"
   readonly capabilities: WalletCapabilities = {
     signMessage: true,
@@ -247,7 +249,7 @@ export class TurnkeyAdapter implements WalletAdapter {
     }
   }
 
-  async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {
+  async sendTransaction(tx: EvmTransactionRequest): Promise<TransactionResult> {
     this.onRequest?.("sendTransaction", tx)
     const startTime = Date.now()
 
@@ -418,7 +420,7 @@ export class TurnkeyAdapter implements WalletAdapter {
 
   private async estimateGasParams(
     rpcUrl: string,
-    tx: TransactionRequest,
+    tx: EvmTransactionRequest,
   ): Promise<{
     nonce: bigint
     gasLimit: bigint

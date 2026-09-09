@@ -60,48 +60,67 @@
  */
 
 import type {
+  EvmTransactionRequest,
+  EvmWalletAdapter,
   SignMessageRequest,
   SignTypedDataRequest,
-  TransactionRequest,
   TransactionResult,
-  WalletAdapter,
   WalletCapabilities,
   WalletInfo,
 } from "../types/index.js"
+import type { PrivyConfig } from "./privy-transport.js"
+import {
+  PrivyTransport,
+  privyConfigFromEnv,
+  toWalletInfo,
+} from "./privy-transport.js"
 
-export interface PrivyConfig {
-  appId: string
-  appSecret: string
-  walletId: string
-  baseUrl?: string
-  /**
-   * Optional base64-encoded PKCS8 P-256 authorization private key.
-   * When set, every POST /v1/wallets/{id}/rpc request is signed with it
-   * and the resulting signature is attached as
-   * `privy-authorization-signature`. Use this when the wallet has an
-   * `owner_id` configured and the agent's key is registered as an
-   * `additional_signer`.
-   */
-  authSigningKey?: string
+export type { PrivyConfig } from "./privy-transport.js"
+
+/**
+ * Builders for the `params` object of each Privy RPC body.
+ *
+ * Split out of the call sites so `privy-rpc-shapes.test.ts` can check them against the types
+ * `@privy-io/node` publishes, rather than against a copy of what this file happens to send. That
+ * copy is how `eth_signTypedData_v4` shipped wrong: it sent a `typedData` JSON string with
+ * `primaryType`, where Privy takes a `typed_data` object with `primary_type`, and the test parsed
+ * back the same wrong shape it had just written.
+ */
+export function buildPersonalSignParams(request: SignMessageRequest): {
+  message: string
+  encoding: "utf-8" | "hex"
+} {
+  const isBytes = typeof request.message !== "string"
+  return {
+    message: isBytes
+      ? `0x${Buffer.from(request.message as Uint8Array).toString("hex")}`
+      : (request.message as string),
+    encoding: isBytes ? "hex" : "utf-8",
+  }
 }
 
-const PRIVY_API_BASE = "https://api.privy.io"
-
-const PRIVY_401_ECHO_HINT =
-  " (hint: if you're verifying credentials via curl, use " +
-  `'printf %s "$PRIVY_APP_ID:$PRIVY_APP_SECRET" | base64' — ` +
-  "'echo' adds a trailing newline that breaks basic auth)"
-
-interface PrivyWalletResponse {
-  id: string
-  address: string
-  chain_type: string
-  policy_ids?: string[]
-  owner_id?: string | null
-  additional_signers?: Array<{ signer_id: string }>
+export function buildSignTypedDataParams(request: SignTypedDataRequest): {
+  typed_data: {
+    domain: Record<string, unknown>
+    types: Record<string, Array<{ name: string; type: string }>>
+    primary_type: string
+    message: Record<string, unknown>
+  }
+} {
+  return {
+    typed_data: {
+      domain: request.domain,
+      types: request.types,
+      // snake_case, and a real object. Privy rejects `primaryType` and a JSON string.
+      primary_type: request.primaryType,
+      message: request.message,
+    },
+  }
 }
 
-export class PrivyAdapter implements WalletAdapter {
+export class PrivyAdapter implements EvmWalletAdapter {
+  readonly chainType = "evm" as const
+
   readonly name = "privy"
   readonly capabilities: WalletCapabilities = {
     signMessage: true,
@@ -111,157 +130,31 @@ export class PrivyAdapter implements WalletAdapter {
   }
   onRequest?: (method: string, params: unknown) => void
   onResponse?: (method: string, result: unknown, durationMs: number) => void
-  private config: PrivyConfig
-  private cachedAddress?: string
+  private transport: PrivyTransport
 
   constructor(config: PrivyConfig) {
-    this.config = config
+    this.transport = new PrivyTransport(config)
   }
 
   static fromEnv(): PrivyAdapter {
-    const appId = process.env.PRIVY_APP_ID
-    const appSecret = process.env.PRIVY_APP_SECRET
-    const walletId = process.env.PRIVY_WALLET_ID
-
-    if (!appId) {
-      throw new Error("PRIVY_APP_ID environment variable is required")
-    }
-    if (!appSecret) {
-      throw new Error("PRIVY_APP_SECRET environment variable is required")
-    }
-    if (!walletId) {
-      throw new Error("PRIVY_WALLET_ID environment variable is required")
-    }
-
-    return new PrivyAdapter({
-      appId,
-      appSecret,
-      walletId,
-      baseUrl: process.env.PRIVY_API_BASE_URL,
-      authSigningKey: process.env.PRIVY_AUTH_SIGNING_KEY,
-    })
-  }
-
-  private get baseUrl(): string {
-    return this.config.baseUrl ?? PRIVY_API_BASE
-  }
-
-  private get basicAuthHeaders(): Record<string, string> {
-    const credentials = Buffer.from(
-      `${this.config.appId}:${this.config.appSecret}`,
-    ).toString("base64")
-    return {
-      Authorization: `Basic ${credentials}`,
-      "privy-app-id": this.config.appId,
-      "Content-Type": "application/json",
-    }
-  }
-
-  /**
-   * Build headers for a POST /rpc call, including the authorization
-   * signature when `authSigningKey` is configured. Lazy-imports
-   * `@privy-io/node` so users who don't enable auth-key signing don't
-   * need the optional peer dependency installed.
-   */
-  private async rpcHeaders(
-    body: Record<string, unknown>,
-    rpcUrl: string,
-  ): Promise<Record<string, string>> {
-    const headers = { ...this.basicAuthHeaders }
-    if (!this.config.authSigningKey) return headers
-
-    let generateAuthorizationSignature: typeof import("@privy-io/node").generateAuthorizationSignature
-    try {
-      ;({ generateAuthorizationSignature } = await import("@privy-io/node"))
-    } catch (cause) {
-      throw new Error(
-        "PRIVY_AUTH_SIGNING_KEY is set but @privy-io/node is not installed. " +
-          "Install it with `pnpm add @privy-io/node` (or your package manager equivalent).",
-        { cause: cause as Error },
-      )
-    }
-
-    const signature = generateAuthorizationSignature({
-      authorizationPrivateKey: this.config.authSigningKey,
-      input: {
-        version: 1,
-        method: "POST",
-        url: rpcUrl,
-        body,
-        headers: { "privy-app-id": this.config.appId },
-      },
-    })
-    headers["privy-authorization-signature"] = signature
-    return headers
+    return new PrivyAdapter(privyConfigFromEnv("PRIVY_WALLET_ID"))
   }
 
   async getAddress(): Promise<string> {
-    if (this.cachedAddress) return this.cachedAddress
-
-    const response = await fetch(
-      `${this.baseUrl}/v1/wallets/${this.config.walletId}`,
-      { headers: this.basicAuthHeaders },
-    )
-
-    if (!response.ok) {
-      const body = await response.text()
-      const hint =
-        response.status === 401 && body.includes("Invalid app ID or app secret")
-          ? PRIVY_401_ECHO_HINT
-          : ""
-      throw new Error(
-        `Privy getAddress failed (${response.status}): ${body}${hint}`,
-      )
-    }
-
-    const data = (await response.json()) as PrivyWalletResponse
-    this.cachedAddress = data.address
-    return data.address
+    return this.transport.getAddress()
   }
 
   async getWalletInfo(): Promise<WalletInfo> {
-    const response = await fetch(
-      `${this.baseUrl}/v1/wallets/${this.config.walletId}`,
-      { headers: this.basicAuthHeaders },
-    )
-
-    if (!response.ok) {
-      const body = await response.text()
-      const hint =
-        response.status === 401 && body.includes("Invalid app ID or app secret")
-          ? PRIVY_401_ECHO_HINT
-          : ""
-      throw new Error(
-        `Privy getWalletInfo failed (${response.status}): ${body}${hint}`,
-      )
-    }
-
-    const data = (await response.json()) as PrivyWalletResponse
-    // Same endpoint as getAddress(); seed the cache so a follow-up
-    // getAddress() call (common in `wallet info` flows) doesn't re-fetch.
-    this.cachedAddress = data.address
-    const ownerKeyId = data.owner_id ?? null
-    return {
-      provider: "privy",
-      address: data.address,
-      chainType: data.chain_type,
-      policyIds: data.policy_ids ?? [],
-      ownerKeyId,
-      additionalSignerCount: data.additional_signers?.length ?? 0,
-      ownerEnforcesAuthKey: ownerKeyId !== null,
-    }
+    return toWalletInfo(await this.transport.getWallet("getWalletInfo"))
   }
 
-  async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {
+  async sendTransaction(tx: EvmTransactionRequest): Promise<TransactionResult> {
     this.onRequest?.("sendTransaction", tx)
     const startTime = Date.now()
 
-    const caip2 = `eip155:${tx.chainId}`
-    const rpcUrl = `${this.baseUrl}/v1/wallets/${this.config.walletId}/rpc`
-
-    const body = {
+    const data = await this.transport.rpc<{ hash: string }>("sendTransaction", {
       method: "eth_sendTransaction",
-      caip2,
+      caip2: `eip155:${tx.chainId}`,
       params: {
         transaction: {
           to: tx.to,
@@ -269,23 +162,8 @@ export class PrivyAdapter implements WalletAdapter {
           value: tx.value,
         },
       },
-    }
-
-    const response = await fetch(rpcUrl, {
-      method: "POST",
-      headers: await this.rpcHeaders(body, rpcUrl),
-      body: JSON.stringify(body),
     })
-
-    if (!response.ok) {
-      const responseBody = await response.text()
-      throw new Error(
-        `Privy sendTransaction failed (${response.status}): ${responseBody}`,
-      )
-    }
-
-    const data = (await response.json()) as { data: { hash: string } }
-    const result = { hash: data.data.hash }
+    const result = { hash: data.hash }
     this.onResponse?.("sendTransaction", result, Date.now() - startTime)
     return result
   }
@@ -294,75 +172,31 @@ export class PrivyAdapter implements WalletAdapter {
     this.onRequest?.("signMessage", request)
     const startTime = Date.now()
 
-    const isBytes = typeof request.message !== "string"
-    const message = isBytes
-      ? `0x${Buffer.from(request.message as Uint8Array).toString("hex")}`
-      : (request.message as string)
-
-    const rpcUrl = `${this.baseUrl}/v1/wallets/${this.config.walletId}/rpc`
-    const body = {
-      method: "personal_sign",
-      params: { message, encoding: isBytes ? "hex" : "utf-8" },
-    }
-
-    const response = await fetch(rpcUrl, {
-      method: "POST",
-      headers: await this.rpcHeaders(body, rpcUrl),
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const responseBody = await response.text()
-      throw new Error(
-        `Privy signMessage failed (${response.status}): ${responseBody}`,
-      )
-    }
-
-    const data = (await response.json()) as { data: { signature: string } }
-    this.onResponse?.(
+    const data = await this.transport.rpc<{ signature: string }>(
       "signMessage",
-      data.data.signature,
-      Date.now() - startTime,
+      {
+        method: "personal_sign",
+        params: buildPersonalSignParams(request),
+      },
     )
-    return data.data.signature
+
+    this.onResponse?.("signMessage", data.signature, Date.now() - startTime)
+    return data.signature
   }
 
   async signTypedData(request: SignTypedDataRequest): Promise<string> {
     this.onRequest?.("signTypedData", request)
     const startTime = Date.now()
 
-    const rpcUrl = `${this.baseUrl}/v1/wallets/${this.config.walletId}/rpc`
-    const body = {
-      method: "eth_signTypedData_v4",
-      params: {
-        typedData: JSON.stringify({
-          domain: request.domain,
-          types: request.types,
-          primaryType: request.primaryType,
-          message: request.message,
-        }),
-      },
-    }
-
-    const response = await fetch(rpcUrl, {
-      method: "POST",
-      headers: await this.rpcHeaders(body, rpcUrl),
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const responseBody = await response.text()
-      throw new Error(
-        `Privy signTypedData failed (${response.status}): ${responseBody}`,
-      )
-    }
-
-    const data = (await response.json()) as { data: { signature: string } }
-    this.onResponse?.(
+    const data = await this.transport.rpc<{ signature: string }>(
       "signTypedData",
-      data.data.signature,
-      Date.now() - startTime,
+      {
+        method: "eth_signTypedData_v4",
+        params: buildSignTypedDataParams(request),
+      },
     )
-    return data.data.signature
+
+    this.onResponse?.("signTypedData", data.signature, Date.now() - startTime)
+    return data.signature
   }
 }

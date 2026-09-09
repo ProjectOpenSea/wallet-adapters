@@ -19,11 +19,11 @@ import { secp256k1 } from "@noble/curves/secp256k1"
 import { keccak_256 } from "@noble/hashes/sha3.js"
 import { bytesToHex as nobleToHex } from "@noble/hashes/utils.js"
 import type {
+  EvmTransactionRequest,
+  EvmWalletAdapter,
   SignMessageRequest,
   SignTypedDataRequest,
-  TransactionRequest,
   TransactionResult,
-  WalletAdapter,
   WalletCapabilities,
 } from "../types/index.js"
 import { hashPersonalMessage, hashTypedData } from "../util/eip712.js"
@@ -35,7 +35,9 @@ export interface PrivateKeyConfig {
   address?: string
 }
 
-export class PrivateKeyAdapter implements WalletAdapter {
+export class PrivateKeyAdapter implements EvmWalletAdapter {
+  readonly chainType = "evm" as const
+
   readonly name = "private-key"
   readonly capabilities: WalletCapabilities = {
     signMessage: true,
@@ -92,7 +94,7 @@ export class PrivateKeyAdapter implements WalletAdapter {
     return this.cachedAddress
   }
 
-  async sendTransaction(tx: TransactionRequest): Promise<TransactionResult> {
+  async sendTransaction(tx: EvmTransactionRequest): Promise<TransactionResult> {
     this.onRequest?.("sendTransaction", tx)
     const startTime = Date.now()
 

@@ -1,5 +1,69 @@
 # @opensea/wallet-adapters
 
+## 1.0.0
+
+### Major Changes
+
+- 6af806a: Make `WalletAdapter` chain-generic so non-EVM wallets can implement it.
+
+  `WalletAdapter` is now a union discriminated on `chainType`, with `EvmWalletAdapter` and `SvmWalletAdapter` members over a shared `BaseWalletAdapter`. EVM and SVM share no transaction shape, address format or signing scheme, so a single interface covering both would be a pile of optional methods where half are always absent. Narrow with the exported `isEvmAdapter` / `isSvmAdapter` guards.
+
+  `TransactionRequest` is renamed `EvmTransactionRequest`, with the old name kept as an alias. New `SvmTransactionRequest` and `SvmSignedTransaction` carry a serialized transaction rather than `to`/`data`/`value`, since a Solana transaction is instructions over accounts with no single recipient. `SvmWalletAdapter` requires `signTransaction` and leaves `sendTransaction` optional, the reverse of EVM: sign-only providers are ordinary on Solana, where a fee payer co-signs or the caller broadcasts with its own commitment policy.
+
+  The ethers and viem bridges now take `EvmWalletAdapter`, since both are EVM clients. Flows that are EVM-only in substance say so at the type level rather than failing later on a missing method: x402 settlement (EIP-3009), `swaps.execute`, and the `auth`/`smoke` commands that sign EIP-712. Each rejects a Solana wallet with a message naming the reason.
+
+  `requireEvmAdapter(adapter, purpose)` and `WrongChainTypeError` are exported for the four EVM-only flows, so they share one check and one message instead of four hand-written copies that drift.
+
+  `SvmWalletAdapter.capabilities` is typed as the new exported `SvmWalletCapabilities`, which pins `signTypedData` to the literal `false`. EIP-712 is an Ethereum scheme and `SvmWalletAdapter` declares no `signTypedData` method, so an SVM adapter claiming that capability would advertise an operation no consumer could call.
+
+  No adapter behavior changes. The five existing providers declare `chainType: "evm"` and are otherwise untouched.
+
+### Minor Changes
+
+- c33ddc3: Add `PrivySvmAdapter`, a Solana implementation of `SvmWalletAdapter`.
+
+  Signs through Privy's `/v1/wallets/{id}/rpc`: `signTransaction` to sign without broadcasting,
+  `signAndSendTransaction` to sign and submit, and `signMessage`. Privy's SVM RPCs accept only
+  `encoding: "base64"`, so a `Uint8Array` request is converted here rather than passed through, and
+  the signed result comes back base64 already, which is what `SvmSignedTransaction` promises.
+  `sendTransaction` defaults `caip2` to Solana mainnet, since that RPC requires a cluster while
+  sign-only ignores one.
+
+  Request bodies are pinned to the types `@privy-io/node` publishes, derived from Privy's own RPC
+  input union and discriminated by the same `method` string the adapter sends, so a field they rename
+  fails `type-check` rather than failing as a 4xx.
+
+  `createWalletFromEnv`, `createWalletForProvider` and `detectProvider` take an optional
+  `{ chainType }` selector, defaulting to `"evm"` so existing callers are unchanged. A Privy wallet is
+  bound to one `chain_type`, so the Solana wallet is a separate wallet with its own id, read from
+  `PRIVY_SVM_WALLET_ID`. Both chains can be configured at once, and asking for one while only the
+  other is configured says so and names the variable to set.
+
+  `PrivyAdapter` and `PrivySvmAdapter` now share `PrivyTransport` for credentials, the
+  authorization-signature header and the RPC envelope, rather than keeping two copies that drift.
+  No EVM behavior changes.
+
+  Not yet exercised against a live Privy wallet. Every shape here is checked against their published
+  types, and the adapter is unit tested against a stubbed transport, but no real Solana transaction
+  has been signed or landed.
+
+### Patch Changes
+
+- 6af806a: Fix `PrivyAdapter.signTypedData`, which sent a request Privy rejects.
+
+  It posted `params.typedData` as a JSON string containing `primaryType`. Privy takes
+  `params.typed_data` as an object containing `primary_type`, so EIP-712 signing through Privy could
+  not have worked. This affects the `auth` and `smoke` commands and x402 settlement, all of which
+  sign typed data.
+
+  The test that covered it did `JSON.parse(body.params.typedData)` and asserted
+  `typedData.primaryType`, reading back the same shape the adapter had just written, so it passed
+  against a body the API rejects. Request bodies are now pinned to the types `@privy-io/node`
+  publishes, in `privy-rpc-shapes.test.ts`: they are derived from Privy's own RPC input union rather
+  than transcribed from their docs, so a field they rename fails `type-check` here instead of
+  failing as a 4xx in production. The import is `import type`, so `@privy-io/node` stays an optional
+  peer dependency and nothing joins the runtime graph.
+
 ## 0.3.5
 
 ### Patch Changes
