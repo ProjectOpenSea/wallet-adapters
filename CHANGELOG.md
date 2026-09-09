@@ -1,5 +1,11 @@
 # @opensea/wallet-adapters
 
+## 1.2.0
+
+### Minor Changes
+
+- 0dddb2e: Add an optional `fetchImpl` to every adapter config (`PrivyConfig`, `TurnkeyConfig`, `FireblocksConfig`, `BankrConfig`, `PrivateKeyConfig`), exported as the `FetchImpl` type. It defaults to the global `fetch`, so nothing changes for existing callers, and it lets a test assert on the requests an adapter builds without running a server or reassigning `globalThis.fetch`.
+
 ## 1.1.0
 
 ### Minor Changes

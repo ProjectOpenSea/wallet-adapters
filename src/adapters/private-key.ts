@@ -21,6 +21,7 @@ import { bytesToHex as nobleToHex } from "@noble/hashes/utils.js"
 import type {
   EvmTransactionRequest,
   EvmWalletAdapter,
+  FetchImpl,
   SignMessageRequest,
   SignTypedDataRequest,
   TransactionResult,
@@ -34,6 +35,8 @@ export interface PrivateKeyConfig {
   privateKey: string
   rpcUrl?: string
   address?: string
+  /** {@link FetchImpl} to use instead of the global `fetch`. */
+  fetchImpl?: FetchImpl
 }
 
 export class PrivateKeyAdapter implements EvmWalletAdapter {
@@ -54,6 +57,20 @@ export class PrivateKeyAdapter implements EvmWalletAdapter {
   constructor(config: PrivateKeyConfig) {
     this.config = config
     this.cachedAddress = config.address
+  }
+
+  /**
+   * Calls the configured transport, falling back to the global `fetch`.
+   *
+   * A method rather than a getter returning the function: `this.fetchImpl(...)`
+   * invokes whatever the getter returns with the adapter as its receiver, so a
+   * caller passing `globalThis.fetch` straight in would hit an illegal
+   * invocation in browsers. Going through a local binding leaves the receiver
+   * undefined, which is what `fetch` expects.
+   */
+  private fetchImpl(input: string, init?: RequestInit): Promise<Response> {
+    const impl = this.config.fetchImpl
+    return impl ? impl(input, init) : fetch(input, init)
   }
 
   static fromEnv(): PrivateKeyAdapter {
@@ -240,7 +257,7 @@ export class PrivateKeyAdapter implements EvmWalletAdapter {
     method: string,
     params: unknown[],
   ): Promise<unknown> {
-    const response = await fetch(rpcUrl, {
+    const response = await this.fetchImpl(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),

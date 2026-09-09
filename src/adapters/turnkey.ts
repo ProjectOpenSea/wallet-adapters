@@ -59,6 +59,7 @@
 import type {
   EvmTransactionRequest,
   EvmWalletAdapter,
+  FetchImpl,
   SignMessageRequest,
   SignTypedDataRequest,
   TransactionResult,
@@ -76,6 +77,8 @@ export interface TurnkeyConfig {
   rpcUrl: string
   privateKeyId?: string
   baseUrl?: string
+  /** {@link FetchImpl} to use instead of the global `fetch`. */
+  fetchImpl?: FetchImpl
 }
 
 const TURNKEY_API_BASE = "https://api.turnkey.com"
@@ -96,6 +99,20 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
 
   constructor(config: TurnkeyConfig) {
     this.config = config
+  }
+
+  /**
+   * Calls the configured transport, falling back to the global `fetch`.
+   *
+   * A method rather than a getter returning the function: `this.fetchImpl(...)`
+   * invokes whatever the getter returns with the adapter as its receiver, so a
+   * caller passing `globalThis.fetch` straight in would hit an illegal
+   * invocation in browsers. Going through a local binding leaves the receiver
+   * undefined, which is what `fetch` expects.
+   */
+  private fetchImpl(input: string, init?: RequestInit): Promise<Response> {
+    const impl = this.config.fetchImpl
+    return impl ? impl(input, init) : fetch(input, init)
   }
 
   static fromEnv(): TurnkeyAdapter {
@@ -188,7 +205,7 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
     const bodyStr = JSON.stringify(body)
     const stampValue = await this.stamp(bodyStr)
 
-    return fetch(`${this.baseUrl}${path}`, {
+    return this.fetchImpl(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -311,7 +328,7 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
       )
     }
 
-    const rpcResponse = await fetch(rpcUrl, {
+    const rpcResponse = await this.fetchImpl(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -486,7 +503,7 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
     method: string,
     params: unknown[],
   ): Promise<unknown> {
-    const response = await fetch(rpcUrl, {
+    const response = await this.fetchImpl(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

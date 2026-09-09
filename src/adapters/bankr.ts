@@ -49,6 +49,7 @@
 import type {
   EvmTransactionRequest,
   EvmWalletAdapter,
+  FetchImpl,
   SignMessageRequest,
   SignTypedDataRequest,
   TransactionResult,
@@ -60,6 +61,8 @@ import { requireIdempotencySupport } from "../types/index.js"
 export interface BankrConfig {
   apiKey: string
   baseUrl?: string
+  /** {@link FetchImpl} to use instead of the global `fetch`. */
+  fetchImpl?: FetchImpl
 }
 
 const BANKR_API_BASE = "https://api.bankr.bot"
@@ -81,6 +84,20 @@ export class BankrAdapter implements EvmWalletAdapter {
 
   constructor(config: BankrConfig) {
     this.config = config
+  }
+
+  /**
+   * Calls the configured transport, falling back to the global `fetch`.
+   *
+   * A method rather than a getter returning the function: `this.fetchImpl(...)`
+   * invokes whatever the getter returns with the adapter as its receiver, so a
+   * caller passing `globalThis.fetch` straight in would hit an illegal
+   * invocation in browsers. Going through a local binding leaves the receiver
+   * undefined, which is what `fetch` expects.
+   */
+  private fetchImpl(input: string, init?: RequestInit): Promise<Response> {
+    const impl = this.config.fetchImpl
+    return impl ? impl(input, init) : fetch(input, init)
   }
 
   static fromEnv(): BankrAdapter {
@@ -110,7 +127,7 @@ export class BankrAdapter implements EvmWalletAdapter {
   async getAddress(): Promise<string> {
     if (this.cachedAddress) return this.cachedAddress
 
-    const response = await fetch(`${this.baseUrl}/wallet/me`, {
+    const response = await this.fetchImpl(`${this.baseUrl}/wallet/me`, {
       headers: this.authHeaders,
     })
 
@@ -158,7 +175,7 @@ export class BankrAdapter implements EvmWalletAdapter {
     if (tx.maxPriorityFeePerGas)
       transaction.maxPriorityFeePerGas = tx.maxPriorityFeePerGas
 
-    const response = await fetch(`${this.baseUrl}/wallet/submit`, {
+    const response = await this.fetchImpl(`${this.baseUrl}/wallet/submit`, {
       method: "POST",
       headers: this.authHeaders,
       body: JSON.stringify({
@@ -189,7 +206,7 @@ export class BankrAdapter implements EvmWalletAdapter {
         ? request.message
         : `0x${Buffer.from(request.message).toString("hex")}`
 
-    const response = await fetch(`${this.baseUrl}/wallet/sign`, {
+    const response = await this.fetchImpl(`${this.baseUrl}/wallet/sign`, {
       method: "POST",
       headers: this.authHeaders,
       body: JSON.stringify({
@@ -217,7 +234,7 @@ export class BankrAdapter implements EvmWalletAdapter {
     // BigInt, so serialize them to strings for the Bankr API.
     const replacer = (_k: string, v: unknown) =>
       typeof v === "bigint" ? v.toString() : v
-    const response = await fetch(`${this.baseUrl}/wallet/sign`, {
+    const response = await this.fetchImpl(`${this.baseUrl}/wallet/sign`, {
       method: "POST",
       headers: this.authHeaders,
       body: JSON.stringify(

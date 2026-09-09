@@ -33,6 +33,7 @@ export type {
   ChainType,
   EvmTransactionRequest,
   EvmWalletAdapter,
+  FetchImpl,
   SignMessageRequest,
   SignTypedDataRequest,
   SvmSignedTransaction,

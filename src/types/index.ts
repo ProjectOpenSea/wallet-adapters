@@ -399,6 +399,18 @@ export type SvmWalletCapabilities = Omit<
   signTypedData: false
 }
 
+/**
+ * The `fetch` an adapter should use for every HTTP call it makes.
+ *
+ * Every adapter config takes one as `fetchImpl`, defaulting to the global
+ * `fetch`. `baseUrl` can already point an adapter at a local server, but
+ * asserting on a request then means running one; `onRequest`/`onResponse`
+ * observe a call rather than standing in for the transport. Injecting the
+ * transport is what lets a test read the URL, headers and body an adapter
+ * produces without a network and without reassigning a global.
+ */
+export type FetchImpl = typeof globalThis.fetch
+
 export type WalletProvider =
   | "privy"
   | "turnkey"
