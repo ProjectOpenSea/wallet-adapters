@@ -47,9 +47,12 @@ export type {
   WalletProvider,
 } from "./types/index.js"
 export {
+  BlankIdempotencyKeyError,
+  IdempotencyUnsupportedError,
   isEvmAdapter,
   isSvmAdapter,
   requireEvmAdapter,
+  requireIdempotencySupport,
   WALLET_PROVIDERS,
   WrongChainTypeError,
 } from "./types/index.js"

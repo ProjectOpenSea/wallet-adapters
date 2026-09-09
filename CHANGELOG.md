@@ -1,5 +1,37 @@
 # @opensea/wallet-adapters
 
+## 1.1.0
+
+### Minor Changes
+
+- 621a0a9: Let a caller pass an idempotency key, so a retried send cannot broadcast twice.
+
+  `EvmTransactionRequest` and `SvmTransactionRequest` accept an optional `idempotencyKey`. The Privy
+  adapters forward it as the `privy-idempotency-key` header, which Privy documents as the mechanism
+  for preventing double-spends: it stores the request and response for 24 hours and returns the stored
+  response rather than re-executing. Previously there was no way to supply one, so a retry after a
+  timeout was a second transaction.
+
+  This is not `reference_id`, which Privy also accepts on a send and which is for reconciliation only:
+  "Optional developer-provided reference ID for transaction reconciliation." It does not deduplicate.
+
+  Generate one key per transaction you want to happen once, and reuse it on every retry of that
+  transaction. The reuse is the mechanism: a retry with the same key returns the stored response,
+  while a retry with a fresh key is a second transaction, so the key belongs outside the retry loop.
+  Reusing a key with a changed body is rejected with a 400, which ties it to the request you built
+  rather than to the caller or the session.
+
+  A blank key throws `BlankIdempotencyKeyError` rather than being dropped or forwarded. Privy answers
+  200 to both an empty and a whitespace-only `privy-idempotency-key`, verified against the live API,
+  so forwarding one protects nothing while dropping one leaves the caller believing a retry is safe.
+  An empty string almost always arrives from an unset variable.
+
+  Four adapters cannot honour a key, so they **throw** `IdempotencyUnsupportedError` when handed one
+  rather than dropping it: bankr, fireblocks, turnkey and private-key. A silently ignored key turns a
+  retry into exactly the second transaction the caller was trying to avoid, and the throw happens
+  before any network call. `capabilities.idempotentSend` tells a caller which it has, and is optional
+  so an adapter written against 1.0.x still satisfies `WalletCapabilities`.
+
 ## 1.0.1
 
 ### Patch Changes

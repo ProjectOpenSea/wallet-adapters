@@ -43,6 +43,7 @@ import type {
   TransactionResult,
   WalletInfo,
 } from "../types/index.js"
+import { requireIdempotencySupport } from "../types/index.js"
 import type { PrivyConfig } from "./privy-transport.js"
 import {
   PrivyTransport,
@@ -105,6 +106,7 @@ export class PrivySvmAdapter implements SvmWalletAdapter {
     signTypedData: false,
     managedGas: true,
     managedNonce: true,
+    idempotentSend: true,
   }
 
   onRequest?: (method: string, params: unknown) => void
@@ -139,16 +141,18 @@ export class PrivySvmAdapter implements SvmWalletAdapter {
   async signTransaction(
     tx: SvmTransactionRequest,
   ): Promise<SvmSignedTransaction> {
+    requireIdempotencySupport(this, tx)
     this.onRequest?.("signTransaction", tx)
     const startTime = Date.now()
 
     const data = await this.transport.rpc<{
       signed_transaction: string
       encoding: string
-    }>("signTransaction", {
-      method: "signTransaction",
-      params: buildSvmTransactionParams(tx),
-    })
+    }>(
+      "signTransaction",
+      { method: "signTransaction", params: buildSvmTransactionParams(tx) },
+      tx.idempotencyKey,
+    )
 
     // Already base64, since that is the only encoding Privy returns here.
     const result = { signedTransaction: data.signed_transaction }
@@ -158,6 +162,8 @@ export class PrivySvmAdapter implements SvmWalletAdapter {
 
   /** Sign and broadcast, returning the transaction signature as `hash`. */
   async sendTransaction(tx: SvmTransactionRequest): Promise<TransactionResult> {
+    // Supported here, so this only rejects a blank key: forwarding one is a silent no-op.
+    requireIdempotencySupport(this, tx)
     this.onRequest?.("sendTransaction", tx)
     const startTime = Date.now()
 
@@ -169,6 +175,7 @@ export class PrivySvmAdapter implements SvmWalletAdapter {
         caip2: tx.caip2 ?? SOLANA_MAINNET_CAIP2,
         params: buildSvmTransactionParams(tx),
       },
+      tx.idempotencyKey,
     )
 
     const result = { hash: data.hash }

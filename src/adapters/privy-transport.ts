@@ -100,8 +100,12 @@ export class PrivyTransport {
    */
   private async rpcHeaders(
     body: Record<string, unknown>,
+    idempotencyKey?: string,
   ): Promise<Record<string, string>> {
     const headers = { ...this.basicAuthHeaders }
+    if (idempotencyKey) headers["privy-idempotency-key"] = idempotencyKey
+    // The authorization signature covers only the headers named below, so adding the idempotency
+    // key here does not invalidate it.
     if (!this.config.authSigningKey) return headers
 
     let generateAuthorizationSignature: typeof import("@privy-io/node").generateAuthorizationSignature
@@ -159,10 +163,21 @@ export class PrivyTransport {
   }
 
   /** POST /v1/wallets/{id}/rpc, returning the `data` envelope Privy wraps every result in. */
-  async rpc<T>(operation: string, body: Record<string, unknown>): Promise<T> {
+  /**
+   * @param idempotencyKey forwarded as `privy-idempotency-key`. Privy stores the request and its
+   *   response for 24 hours and returns the stored response rather than re-executing, which is what
+   *   makes a retried send safe. That only works when the retry carries the *same* key, so a
+   *   caller generates one per transaction and reuses it across retries; a fresh key per retry
+   *   sends again. Reusing a key with a changed body is a 400.
+   */
+  async rpc<T>(
+    operation: string,
+    body: Record<string, unknown>,
+    idempotencyKey?: string,
+  ): Promise<T> {
     const response = await fetch(this.rpcUrl, {
       method: "POST",
-      headers: await this.rpcHeaders(body),
+      headers: await this.rpcHeaders(body, idempotencyKey),
       body: JSON.stringify(body),
     })
     if (!response.ok) return this.fail(operation, response)

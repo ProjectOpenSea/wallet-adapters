@@ -65,6 +65,7 @@ import type {
   WalletCapabilities,
   WalletInfo,
 } from "../types/index.js"
+import { requireIdempotencySupport } from "../types/index.js"
 import { hashPersonalMessage, hashTypedData } from "../util/eip712.js"
 
 export interface TurnkeyConfig {
@@ -250,6 +251,9 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
   }
 
   async sendTransaction(tx: EvmTransactionRequest): Promise<TransactionResult> {
+    // Throws rather than dropping it: a silently ignored key turns a retry into a second
+    // transaction, which is the opposite of what the caller asked for.
+    requireIdempotencySupport(this, tx)
     this.onRequest?.("sendTransaction", tx)
     const startTime = Date.now()
 

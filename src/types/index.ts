@@ -79,6 +79,24 @@ export type ChainType = "evm" | "svm"
 
 /** An EVM transaction to sign and broadcast. */
 export interface EvmTransactionRequest {
+  /**
+   * Optional key making a retry of this exact request safe, forwarded to providers that support
+   * one. Privy stores the request and response for 24 hours and returns the stored response
+   * instead of re-executing, so a retried send cannot broadcast twice.
+   *
+   * **One key per transaction you want to happen once, reused on every retry of it.** The reuse is
+   * the whole mechanism: a retry carrying the same key gets the stored response, while a retry
+   * carrying a fresh key is a second transaction. So generate the key where you decide to send,
+   * not inside the retry loop.
+   *
+   * A different key means a different transaction. Reusing a key with a changed body is rejected
+   * with a 400, which ties the key to the request you actually built rather than to the caller or
+   * the session.
+   *
+   * A provider that cannot honour a key throws rather than dropping it, so this can never be
+   * silently ineffective. Check `capabilities.idempotentSend` to know which you have.
+   */
+  idempotencyKey?: string
   to: string
   data: string
   value: string
@@ -106,6 +124,8 @@ export type TransactionRequest = EvmTransactionRequest
  * and hand over the bytes, which keeps this package free of a Solana SDK dependency.
  */
 export interface SvmTransactionRequest {
+  /** See {@link EvmTransactionRequest.idempotencyKey}. Honoured by `PrivySvmAdapter`. */
+  idempotencyKey?: string
   /**
    * The serialized transaction message. `Uint8Array` is the wire form; a `string` is accepted as
    * base64, which is what most Solana RPC surfaces and OpenSea's own swap responses return.
@@ -288,6 +308,60 @@ export function requireEvmAdapter(
 }
 
 /**
+ * Thrown when a request carries an `idempotencyKey` the adapter cannot honour.
+ *
+ * Louder than dropping the key, because the caller supplied it precisely to make a retry safe: a
+ * silently ignored key turns a retry into a second transaction.
+ */
+export class IdempotencyUnsupportedError extends Error {
+  constructor(readonly adapter: BaseWalletAdapter) {
+    super(
+      `wallet "${adapter.name}" does not support an idempotency key, so retrying this request ` +
+        "could send twice. Remove idempotencyKey, or use a provider whose " +
+        "capabilities.idempotentSend is true.",
+    )
+    this.name = "IdempotencyUnsupportedError"
+  }
+}
+
+/** Thrown when an `idempotencyKey` is present but blank, which protects nothing. */
+export class BlankIdempotencyKeyError extends Error {
+  constructor(readonly adapter: BaseWalletAdapter) {
+    super(
+      `wallet "${adapter.name}" was given a blank idempotency key. Privy accepts one with a 200 ` +
+        "and it protects nothing, so retrying this request could send twice. Generate one value " +
+        "per transaction, such as a v4 UUID, reuse it on every retry of that transaction, or " +
+        "omit the field.",
+    )
+    this.name = "BlankIdempotencyKeyError"
+  }
+}
+
+/**
+ * Validates a supplied `idempotencyKey` and rejects one the adapter cannot honour. Call it at the
+ * top of `sendTransaction` in **every** adapter, including those that do forward a key: the blank
+ * check applies to all of them and only the support check is conditional.
+ *
+ * A blank key is rejected rather than dropped or forwarded. Verified against the live API: Privy
+ * answers 200 to both an empty and a whitespace-only `privy-idempotency-key`, so forwarding one
+ * buys nothing and dropping one leaves a caller believing a retry is safe when it is not. An empty
+ * string usually arrives from an unset variable, so it is a caller mistake worth naming rather than
+ * absorbing.
+ */
+export function requireIdempotencySupport(
+  adapter: BaseWalletAdapter,
+  request: { idempotencyKey?: string },
+): void {
+  const key = request.idempotencyKey
+  // Presence, not truthiness, so "" reaches the checks below instead of looking like an omission.
+  if (key === undefined) return
+  if (key.trim() === "") throw new BlankIdempotencyKeyError(adapter)
+  if (adapter.capabilities.idempotentSend !== true) {
+    throw new IdempotencyUnsupportedError(adapter)
+  }
+}
+
+/**
  * Declares which optional operations an adapter supports.
  * Consumers can check capabilities before calling optional methods.
  */
@@ -301,6 +375,14 @@ export interface WalletCapabilities {
   managedGas: boolean
   /** Whether the provider manages nonce internally */
   managedNonce: boolean
+  /**
+   * Whether the provider honours `idempotencyKey` on a transaction request.
+   *
+   * Optional so an adapter written against an earlier version still satisfies this type; absent
+   * means not supported. An adapter that declares `false` or omits it must throw when handed a key,
+   * via {@link requireIdempotencySupport}, so a caller expecting protection never silently loses it.
+   */
+  idempotentSend?: boolean
 }
 
 /**

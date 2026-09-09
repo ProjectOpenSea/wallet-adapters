@@ -68,6 +68,7 @@ import type {
   WalletCapabilities,
   WalletInfo,
 } from "../types/index.js"
+import { requireIdempotencySupport } from "../types/index.js"
 import type { PrivyConfig } from "./privy-transport.js"
 import {
   PrivyTransport,
@@ -127,6 +128,7 @@ export class PrivyAdapter implements EvmWalletAdapter {
     signTypedData: true,
     managedGas: true,
     managedNonce: true,
+    idempotentSend: true,
   }
   onRequest?: (method: string, params: unknown) => void
   onResponse?: (method: string, result: unknown, durationMs: number) => void
@@ -149,20 +151,26 @@ export class PrivyAdapter implements EvmWalletAdapter {
   }
 
   async sendTransaction(tx: EvmTransactionRequest): Promise<TransactionResult> {
+    // Supported here, so this only rejects a blank key: forwarding one is a silent no-op.
+    requireIdempotencySupport(this, tx)
     this.onRequest?.("sendTransaction", tx)
     const startTime = Date.now()
 
-    const data = await this.transport.rpc<{ hash: string }>("sendTransaction", {
-      method: "eth_sendTransaction",
-      caip2: `eip155:${tx.chainId}`,
-      params: {
-        transaction: {
-          to: tx.to,
-          data: tx.data,
-          value: tx.value,
+    const data = await this.transport.rpc<{ hash: string }>(
+      "sendTransaction",
+      {
+        method: "eth_sendTransaction",
+        caip2: `eip155:${tx.chainId}`,
+        params: {
+          transaction: {
+            to: tx.to,
+            data: tx.data,
+            value: tx.value,
+          },
         },
       },
-    })
+      tx.idempotencyKey,
+    )
     const result = { hash: data.hash }
     this.onResponse?.("sendTransaction", result, Date.now() - startTime)
     return result
