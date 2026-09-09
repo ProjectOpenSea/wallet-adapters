@@ -17,18 +17,30 @@
  * viem is a peer dependency — consumers must install it separately.
  */
 
-import type { EvmWalletAdapter } from "../types/index.js"
+import type { EvmWalletAdapter, WalletAdapter } from "../types/index.js"
+import { requireEvmAdapter } from "../types/index.js"
 
 export async function walletAdapterToViemClient(
   adapter: EvmWalletAdapter,
   chain: import("viem").Chain,
   rpcUrl?: string,
 ): Promise<import("viem").WalletClient> {
+  // The static type stops a TypeScript caller, but this package publishes `main` and `types`, so a
+  // JavaScript consumer reaches here with no compile step. Without the check the client is built
+  // happily around a base58 Solana key: `client.account.address` and `eth_accounts` both report it
+  // as an Ethereum address, and the first transaction fails with "An unknown RPC error occurred",
+  // which names neither the wallet nor the reason. Verified against a real Privy SVM wallet on
+  // wallet-adapters 1.0.0.
+  //
+  // Before `getAddress()`, not after: viem rejects a base58 key, so a later guard is unreachable
+  // and the caller sees an address error instead of a chain-type one.
+  const evm = requireEvmAdapter(adapter as WalletAdapter, "a viem client")
+
   const { createWalletClient, createPublicClient, custom, http } = await import(
     "viem"
   )
 
-  const address = (await adapter.getAddress()) as `0x${string}`
+  const address = (await evm.getAddress()) as `0x${string}`
 
   // Use json-rpc type so viem routes sendTransaction through the transport
   const account = { address, type: "json-rpc", source: "custom" } as any
@@ -53,7 +65,7 @@ export async function walletAdapterToViemClient(
               maxPriorityFeePerGas?: string
             },
           ]
-          const result = await adapter.sendTransaction({
+          const result = await evm.sendTransaction({
             to: txParams.to,
             data: txParams.data ?? "0x",
             value: txParams.value ? String(BigInt(txParams.value)) : "0",

@@ -1,6 +1,6 @@
 {
   "name": "@opensea/wallet-adapters",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends",
   "license": "MIT",

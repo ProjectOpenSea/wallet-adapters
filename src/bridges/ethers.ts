@@ -18,7 +18,8 @@
  * ethers v6 is a peer dependency — consumers must install it separately.
  */
 
-import type { EvmWalletAdapter } from "../types/index.js"
+import type { EvmWalletAdapter, WalletAdapter } from "../types/index.js"
+import { requireEvmAdapter } from "../types/index.js"
 
 /**
  * Create an ethers.js-compatible Signer from a WalletAdapter.
@@ -41,7 +42,15 @@ export class EthersAdapterSigner {
   readonly provider: any
 
   constructor(adapter: EvmWalletAdapter, provider: any) {
-    this.adapter = adapter
+    // In the constructor rather than the factory, so a caller that builds the signer directly is
+    // covered too. The static type stops a TypeScript caller, but this package publishes `main` and
+    // `types`, so a JavaScript consumer reaches here with no compile step and would otherwise get a
+    // signer whose `getAddress()` returns a base58 Solana key, failing later somewhere that names
+    // neither the wallet nor the reason. Matches the viem bridge.
+    this.adapter = requireEvmAdapter(
+      adapter as WalletAdapter,
+      "an ethers signer",
+    )
     this.provider = provider
   }
 

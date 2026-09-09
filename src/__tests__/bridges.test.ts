@@ -4,7 +4,8 @@ import {
   walletAdapterToEthersSigner,
 } from "../bridges/ethers.js"
 import { walletAdapterToViemClient } from "../bridges/viem.js"
-import type { EvmWalletAdapter } from "../types/index.js"
+import type { EvmWalletAdapter, SvmWalletAdapter } from "../types/index.js"
+import { WrongChainTypeError } from "../types/index.js"
 
 function createMockAdapter(
   overrides: Partial<EvmWalletAdapter> = {},
@@ -29,6 +30,76 @@ function createMockAdapter(
     ...overrides,
   }
 }
+
+/**
+ * Shaped like the real `PrivySvmAdapter`, including the base58 address, because that is what makes
+ * the failure quiet: viem builds a client around a base58 key without complaint.
+ */
+function createSvmAdapter(): SvmWalletAdapter {
+  return {
+    name: "privy-svm",
+    chainType: "svm",
+    capabilities: {
+      signMessage: true,
+      signTypedData: false,
+      managedGas: true,
+      managedNonce: true,
+    },
+    getAddress: vi
+      .fn()
+      .mockResolvedValue("F9ekHYH6Q1K2WjRcF7wdsbMqFeDtUjThMjcu3m8XueqZ"),
+    signTransaction: vi.fn().mockResolvedValue({ signedTransaction: "AQID" }),
+  }
+}
+
+describe("bridges reject a Solana wallet at runtime", () => {
+  /**
+   * Both bridges are typed `EvmWalletAdapter`, but this package publishes `main` and `types`, so a
+   * JavaScript consumer reaches them with no compile step. On 1.0.0 neither checked, and the viem
+   * bridge returned a working-looking client whose `account.address` was a base58 Solana key:
+   * `eth_accounts` reported it as an Ethereum address and the first transaction failed with
+   * "An unknown RPC error occurred", naming neither the wallet nor the reason. Found by driving the
+   * published package against a real Privy SVM wallet, not by a type error.
+   *
+   * The cast is the point: it stands in for the caller who never compiled.
+   */
+  it("the viem bridge throws before building a client", async () => {
+    const svm = createSvmAdapter()
+
+    await expect(
+      walletAdapterToViemClient(
+        svm as unknown as EvmWalletAdapter,
+        { id: 1 } as never,
+      ),
+    ).rejects.toThrow(WrongChainTypeError)
+    await expect(
+      walletAdapterToViemClient(
+        svm as unknown as EvmWalletAdapter,
+        { id: 1 } as never,
+      ),
+    ).rejects.toThrow(
+      'wallet "privy-svm" signs for svm; a viem client requires an EVM wallet',
+    )
+    // Before getAddress(), so the message is about the chain rather than the address. A guard
+    // placed after it is unreachable, since viem rejects a base58 key first.
+    expect(svm.getAddress).not.toHaveBeenCalled()
+  })
+
+  it("the ethers bridge throws from the constructor", () => {
+    const svm = createSvmAdapter()
+
+    expect(() =>
+      walletAdapterToEthersSigner(svm as unknown as EvmWalletAdapter, {}),
+    ).toThrow(WrongChainTypeError)
+    // Constructing the signer directly is guarded too, not only the factory.
+    expect(
+      () => new EthersAdapterSigner(svm as unknown as EvmWalletAdapter, {}),
+    ).toThrow(
+      'wallet "privy-svm" signs for svm; an ethers signer requires an EVM wallet',
+    )
+    expect(svm.getAddress).not.toHaveBeenCalled()
+  })
+})
 
 describe("walletAdapterToViemClient", () => {
   it("creates a viem client from adapter", async () => {
@@ -136,6 +207,11 @@ describe("EthersAdapterSigner", () => {
     // "Person" instead of "Mail".
     const captured: { primaryType?: string } = {}
     const adapter = {
+      // `name` and `chainType` are not optional on any real adapter, and the constructor's
+      // chain-type guard reads them, so a stub without them is not a smaller adapter but an
+      // impossible one.
+      name: "mock",
+      chainType: "evm" as const,
       getAddress: async () => "0x1111111111111111111111111111111111111111",
       signTypedData: async (args: { primaryType?: string }) => {
         captured.primaryType = args.primaryType
@@ -172,6 +248,8 @@ describe("EthersAdapterSigner", () => {
 
   function signerCapturing(captured: { primaryType?: string }) {
     const adapter = {
+      name: "mock",
+      chainType: "evm" as const,
       getAddress: async () => "0x1111111111111111111111111111111111111111",
       signTypedData: async (args: { primaryType?: string }) => {
         captured.primaryType = args.primaryType

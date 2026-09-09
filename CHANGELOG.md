@@ -1,5 +1,27 @@
 # @opensea/wallet-adapters
 
+## 1.0.1
+
+### Patch Changes
+
+- 2d694a8: Reject a Solana wallet at the viem and ethers bridges rather than building a broken client.
+
+  Both bridges are typed `EvmWalletAdapter`, and in 1.0.0 neither checked at runtime. This package
+  publishes `main` and `types`, so a JavaScript consumer reaches them with no compile step, and the
+  viem bridge returned a client that looked fine: `client.account.address` held a base58 Solana key,
+  `eth_accounts` reported it as an Ethereum address, and the first transaction failed with
+  "An unknown RPC error occurred", naming neither the wallet nor the reason.
+
+  Found by driving the published 1.0.0 against a real Privy SVM wallet, not by a type error. The
+  release notes claimed the viem bridge rejected a Solana wallet, and that was true of `tool-sdk`'s
+  `walletAdapterToClient` wrapper, which does call `requireEvmAdapter`, but not of this package's own
+  bridge.
+
+  Both now call `requireEvmAdapter` before `getAddress()`. The order matters: viem rejects a base58
+  key, so a guard placed after the address lookup is unreachable and the caller sees an address error
+  instead of a chain-type one. The ethers guard sits in the `EthersAdapterSigner` constructor rather
+  than only in `walletAdapterToEthersSigner`, so constructing the signer directly is covered too.
+
 ## 1.0.0
 
 ### Major Changes
