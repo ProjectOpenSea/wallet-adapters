@@ -57,6 +57,7 @@ import type {
   WalletInfo,
 } from "../types/index.js"
 import { requireIdempotencySupport } from "../types/index.js"
+import { fetchWith } from "../util/fetchTransport.js"
 
 export interface BankrConfig {
   apiKey: string
@@ -86,20 +87,6 @@ export class BankrAdapter implements EvmWalletAdapter {
     this.config = config
   }
 
-  /**
-   * Calls the configured transport, falling back to the global `fetch`.
-   *
-   * A method rather than a getter returning the function: `this.fetchImpl(...)`
-   * invokes whatever the getter returns with the adapter as its receiver, so a
-   * caller passing `globalThis.fetch` straight in would hit an illegal
-   * invocation in browsers. Going through a local binding leaves the receiver
-   * undefined, which is what `fetch` expects.
-   */
-  private fetchImpl(input: string, init?: RequestInit): Promise<Response> {
-    const impl = this.config.fetchImpl
-    return impl ? impl(input, init) : fetch(input, init)
-  }
-
   static fromEnv(): BankrAdapter {
     const apiKey = process.env.BANKR_API_KEY
 
@@ -127,9 +114,13 @@ export class BankrAdapter implements EvmWalletAdapter {
   async getAddress(): Promise<string> {
     if (this.cachedAddress) return this.cachedAddress
 
-    const response = await this.fetchImpl(`${this.baseUrl}/wallet/me`, {
-      headers: this.authHeaders,
-    })
+    const response = await fetchWith(
+      this.config.fetchImpl,
+      `${this.baseUrl}/wallet/me`,
+      {
+        headers: this.authHeaders,
+      },
+    )
 
     if (!response.ok) {
       const body = await response.text()
@@ -175,14 +166,18 @@ export class BankrAdapter implements EvmWalletAdapter {
     if (tx.maxPriorityFeePerGas)
       transaction.maxPriorityFeePerGas = tx.maxPriorityFeePerGas
 
-    const response = await this.fetchImpl(`${this.baseUrl}/wallet/submit`, {
-      method: "POST",
-      headers: this.authHeaders,
-      body: JSON.stringify({
-        transaction,
-        waitForConfirmation: true,
-      }),
-    })
+    const response = await fetchWith(
+      this.config.fetchImpl,
+      `${this.baseUrl}/wallet/submit`,
+      {
+        method: "POST",
+        headers: this.authHeaders,
+        body: JSON.stringify({
+          transaction,
+          waitForConfirmation: true,
+        }),
+      },
+    )
 
     if (!response.ok) {
       const body = await response.text()
@@ -206,14 +201,18 @@ export class BankrAdapter implements EvmWalletAdapter {
         ? request.message
         : `0x${Buffer.from(request.message).toString("hex")}`
 
-    const response = await this.fetchImpl(`${this.baseUrl}/wallet/sign`, {
-      method: "POST",
-      headers: this.authHeaders,
-      body: JSON.stringify({
-        signatureType: "personal_sign",
-        message,
-      }),
-    })
+    const response = await fetchWith(
+      this.config.fetchImpl,
+      `${this.baseUrl}/wallet/sign`,
+      {
+        method: "POST",
+        headers: this.authHeaders,
+        body: JSON.stringify({
+          signatureType: "personal_sign",
+          message,
+        }),
+      },
+    )
 
     if (!response.ok) {
       const body = await response.text()
@@ -234,22 +233,26 @@ export class BankrAdapter implements EvmWalletAdapter {
     // BigInt, so serialize them to strings for the Bankr API.
     const replacer = (_k: string, v: unknown) =>
       typeof v === "bigint" ? v.toString() : v
-    const response = await this.fetchImpl(`${this.baseUrl}/wallet/sign`, {
-      method: "POST",
-      headers: this.authHeaders,
-      body: JSON.stringify(
-        {
-          signatureType: "eth_signTypedData_v4",
-          typedData: {
-            domain: request.domain,
-            types: request.types,
-            primaryType: request.primaryType,
-            message: request.message,
+    const response = await fetchWith(
+      this.config.fetchImpl,
+      `${this.baseUrl}/wallet/sign`,
+      {
+        method: "POST",
+        headers: this.authHeaders,
+        body: JSON.stringify(
+          {
+            signatureType: "eth_signTypedData_v4",
+            typedData: {
+              domain: request.domain,
+              types: request.types,
+              primaryType: request.primaryType,
+              message: request.message,
+            },
           },
-        },
-        replacer,
-      ),
-    })
+          replacer,
+        ),
+      },
+    )
 
     if (!response.ok) {
       const body = await response.text()

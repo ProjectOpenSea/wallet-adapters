@@ -65,6 +65,7 @@ import type {
 } from "../types/index.js"
 import { requireIdempotencySupport } from "../types/index.js"
 import { hashPersonalMessage, hashTypedData } from "../util/eip712.js"
+import { fetchWith } from "../util/fetchTransport.js"
 
 import { CHAIN_TO_FIREBLOCKS_ASSET } from "./fireblocks.generated.js"
 
@@ -100,20 +101,6 @@ export class FireblocksAdapter implements EvmWalletAdapter {
 
   constructor(config: FireblocksConfig) {
     this.config = config
-  }
-
-  /**
-   * Calls the configured transport, falling back to the global `fetch`.
-   *
-   * A method rather than a getter returning the function: `this.fetchImpl(...)`
-   * invokes whatever the getter returns with the adapter as its receiver, so a
-   * caller passing `globalThis.fetch` straight in would hit an illegal
-   * invocation in browsers. Going through a local binding leaves the receiver
-   * undefined, which is what `fetch` expects.
-   */
-  private fetchImpl(input: string, init?: RequestInit): Promise<Response> {
-    const impl = this.config.fetchImpl
-    return impl ? impl(input, init) : fetch(input, init)
   }
 
   static fromEnv(): FireblocksAdapter {
@@ -221,12 +208,16 @@ export class FireblocksAdapter implements EvmWalletAdapter {
     const bodyHash = await this.hashBody("")
     const jwt = await this.createJwt(path, bodyHash)
 
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      headers: {
-        "X-API-Key": this.config.apiKey,
-        Authorization: `Bearer ${jwt}`,
+    const response = await fetchWith(
+      this.config.fetchImpl,
+      `${this.baseUrl}${path}`,
+      {
+        headers: {
+          "X-API-Key": this.config.apiKey,
+          Authorization: `Bearer ${jwt}`,
+        },
       },
-    })
+    )
 
     if (!response.ok) {
       const body = await response.text()
@@ -284,15 +275,19 @@ export class FireblocksAdapter implements EvmWalletAdapter {
     const bodyHash = await this.hashBody(bodyStr)
     const jwt = await this.createJwt(path, bodyHash)
 
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": this.config.apiKey,
-        Authorization: `Bearer ${jwt}`,
+    const response = await fetchWith(
+      this.config.fetchImpl,
+      `${this.baseUrl}${path}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": this.config.apiKey,
+          Authorization: `Bearer ${jwt}`,
+        },
+        body: bodyStr,
       },
-      body: bodyStr,
-    })
+    )
 
     if (!response.ok) {
       const body = await response.text()
@@ -367,15 +362,19 @@ export class FireblocksAdapter implements EvmWalletAdapter {
     const bodyHash = await this.hashBody(bodyStr)
     const jwt = await this.createJwt(path, bodyHash)
 
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": this.config.apiKey,
-        Authorization: `Bearer ${jwt}`,
+    const response = await fetchWith(
+      this.config.fetchImpl,
+      `${this.baseUrl}${path}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": this.config.apiKey,
+          Authorization: `Bearer ${jwt}`,
+        },
+        body: bodyStr,
       },
-      body: bodyStr,
-    })
+    )
 
     if (!response.ok) {
       const body = await response.text()
@@ -397,12 +396,16 @@ export class FireblocksAdapter implements EvmWalletAdapter {
       const bodyHash = await this.hashBody("")
       const jwt = await this.createJwt(path, bodyHash)
 
-      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-        headers: {
-          "X-API-Key": this.config.apiKey,
-          Authorization: `Bearer ${jwt}`,
+      const response = await fetchWith(
+        this.config.fetchImpl,
+        `${this.baseUrl}${path}`,
+        {
+          headers: {
+            "X-API-Key": this.config.apiKey,
+            Authorization: `Bearer ${jwt}`,
+          },
         },
-      })
+      )
 
       if (!response.ok) {
         const body = await response.text()
@@ -455,12 +458,16 @@ export class FireblocksAdapter implements EvmWalletAdapter {
       const bodyHash = await this.hashBody("")
       const jwt = await this.createJwt(path, bodyHash)
 
-      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-        headers: {
-          "X-API-Key": this.config.apiKey,
-          Authorization: `Bearer ${jwt}`,
+      const response = await fetchWith(
+        this.config.fetchImpl,
+        `${this.baseUrl}${path}`,
+        {
+          headers: {
+            "X-API-Key": this.config.apiKey,
+            Authorization: `Bearer ${jwt}`,
+          },
         },
-      })
+      )
 
       if (!response.ok) {
         const body = await response.text()

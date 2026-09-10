@@ -11,6 +11,7 @@
  */
 
 import type { FetchImpl, WalletInfo } from "../types/index.js"
+import { fetchWith } from "../util/fetchTransport.js"
 
 export interface PrivyConfig {
   appId: string
@@ -75,20 +76,6 @@ export class PrivyTransport {
   private cachedAddress?: string
 
   constructor(readonly config: PrivyConfig) {}
-
-  /**
-   * Calls the configured transport, falling back to the global `fetch`.
-   *
-   * A method rather than a getter returning the function: `this.fetchImpl(...)`
-   * invokes whatever the getter returns with the adapter as its receiver, so a
-   * caller passing `globalThis.fetch` straight in would hit an illegal
-   * invocation in browsers. Going through a local binding leaves the receiver
-   * undefined, which is what `fetch` expects.
-   */
-  private fetchImpl(input: string, init?: RequestInit): Promise<Response> {
-    const impl = this.config.fetchImpl
-    return impl ? impl(input, init) : fetch(input, init)
-  }
 
   get baseUrl(): string {
     return this.config.baseUrl ?? PRIVY_API_BASE
@@ -162,7 +149,8 @@ export class PrivyTransport {
 
   /** GET /v1/wallets/{id}. Caches the address, since `getAddress` and `getWalletInfo` share it. */
   async getWallet(operation: string): Promise<PrivyWalletResponse> {
-    const response = await this.fetchImpl(
+    const response = await fetchWith(
+      this.config.fetchImpl,
       `${this.baseUrl}/v1/wallets/${this.config.walletId}`,
       { headers: this.basicAuthHeaders },
     )
@@ -191,7 +179,7 @@ export class PrivyTransport {
     body: Record<string, unknown>,
     idempotencyKey?: string,
   ): Promise<T> {
-    const response = await this.fetchImpl(this.rpcUrl, {
+    const response = await fetchWith(this.config.fetchImpl, this.rpcUrl, {
       method: "POST",
       headers: await this.rpcHeaders(body, idempotencyKey),
       body: JSON.stringify(body),

@@ -19,10 +19,11 @@ import { TurnkeyAdapter } from "../adapters/turnkey.js"
 import type { FetchImpl } from "../types/index.js"
 
 /**
- * Every adapter config takes an optional `fetchImpl`. These assert the two
- * halves that make it worth having: the injected transport receives the
- * request, and the global `fetch` is never reached, so a suite that uses it
- * needs neither a network nor a reassigned global.
+ * Every adapter config takes an optional `fetchImpl`. These assert the parts
+ * that make it worth having: the injected transport receives the
+ * request, the global `fetch` is never reached, so a suite that uses it needs
+ * neither a network nor a reassigned global, and the transport is invoked with
+ * the receiver unbound native fetch requires.
  */
 
 const TEST_PRIVATE_KEY =
@@ -214,10 +215,10 @@ describe("fetchImpl seam", () => {
     expect(globalFetch).not.toHaveBeenCalled()
   })
 
-  it("invokes the injected fetch without an adapter receiver", async () => {
-    // `this.fetchImpl(...)` would otherwise call the caller's function with the
-    // adapter as `this`, which is an illegal invocation for a bare
-    // `globalThis.fetch`. A non-arrow records whatever receiver it is given.
+  it("calls the transport with globalThis as its receiver", async () => {
+    // The contract `fetchWith` implements, and the same one
+    // `@opensea/sdk` asserts. A non-arrow records whatever receiver it is
+    // given; a plain `impl(input, init)` would record `undefined` instead.
     let receiver: unknown = "unset"
     const impl = function (this: unknown) {
       receiver = this
@@ -232,7 +233,77 @@ describe("fetchImpl seam", () => {
     })
     await adapter.getAddress()
 
-    expect(receiver).toBeUndefined()
+    expect(receiver).toBe(globalThis)
+  })
+
+  it("satisfies a transport that fails the way browsers do", async () => {
+    // Chrome 152 rejects `fetch.call({}, url)` with "Failed to execute 'fetch'
+    // on 'Window': Illegal invocation" while accepting the global and nullish
+    // receivers. This stand-in fails the same way, so the contract is pinned
+    // rather than assumed. Mirrors `receiverStrict` in the SDK's specs.
+    const receiverStrict = function (this: unknown) {
+      if (this !== globalThis) {
+        throw new TypeError("Illegal invocation")
+      }
+      return Promise.resolve(json({ id: "w1", address: "0xabc" }))
+    } as unknown as FetchImpl
+
+    const adapter = new PrivyAdapter({
+      appId: "app-1",
+      appSecret: "secret-1",
+      walletId: "wallet-123",
+      fetchImpl: receiverStrict,
+    })
+
+    await expect(adapter.getAddress()).resolves.toBe("0xabc")
+  })
+
+  it("never hands the transport a foreign receiver, per a native brand check", async () => {
+    // The hazard a hand-written comparison cannot demonstrate: reading the
+    // transport off `this.config` and calling it as a method would make the
+    // config object the receiver, which is the shape real browsers reject.
+    // Node's `crypto` global accessor is an actual engine-enforced brand
+    // check with the same rule as native fetch, so no assertion in this test
+    // is written by hand: it accepts the global and nullish, and throws
+    // TypeError for any other object.
+    const cryptoGetter = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "crypto",
+    )?.get
+    expect(cryptoGetter).toBeTypeOf("function")
+
+    const brandChecked = function (this: unknown) {
+      cryptoGetter?.call(this)
+      return Promise.resolve(json({ id: "w1", address: "0xabc" }))
+    } as unknown as FetchImpl
+
+    const adapter = new PrivyAdapter({
+      appId: "app-1",
+      appSecret: "secret-1",
+      walletId: "wallet-123",
+      fetchImpl: brandChecked,
+    })
+
+    await expect(adapter.getAddress()).resolves.toBe("0xabc")
+  })
+
+  it("does not clobber the receiver of a deliberately bound transport", async () => {
+    // `.call(globalThis, ...)` is ignored by an already-bound function, so a
+    // caller who bound a transport on purpose keeps their own receiver.
+    const owner = { marker: "owner" as const }
+    const bound = function (this: typeof owner) {
+      expect(this.marker).toBe("owner")
+      return Promise.resolve(json({ id: "w1", address: "0xabc" }))
+    }.bind(owner) as unknown as FetchImpl
+
+    const adapter = new PrivyAdapter({
+      appId: "app-1",
+      appSecret: "secret-1",
+      walletId: "wallet-123",
+      fetchImpl: bound,
+    })
+
+    await expect(adapter.getAddress()).resolves.toBe("0xabc")
   })
 })
 
@@ -244,17 +315,46 @@ describe("fetchImpl seam", () => {
 describe("no adapter calls the global fetch directly", () => {
   const adaptersDir = join(import.meta.dirname, "..", "adapters")
 
-  for (const file of readdirSync(adaptersDir).filter(f => f.endsWith(".ts"))) {
-    it(`${file} routes every call through this.fetchImpl`, () => {
-      const source = readFileSync(join(adaptersDir, file), "utf8")
-      // The lone permitted mention is the fallback inside the helper itself.
-      const withoutFallback = source.replace(
-        /impl \? impl\(input, init\) : fetch\(input, init\)/g,
-        "",
-      )
-      const bare = withoutFallback.match(/(?<!\.)\bfetch\(/g) ?? []
+  /**
+   * `fetchWith` owns the fallback, so an adapter invoking `fetch` under any
+   * spelling is reaching past the seam. Deliberately no `(?<!\.)` lookbehind:
+   * that excluded exactly the qualified forms worth catching, and nothing in
+   * an adapter should call `fetch` as a property either. `fetchWith(` does not
+   * match, because the character after `fetch` is not `(`.
+   *
+   * A string index or a computed member (`globalThis["fetch"](...)`) still
+   * slips past, as does any textual guard. The runtime cases above are what
+   * cover the reachable paths; this catches the careless edit.
+   */
+  const CALLS_FETCH = /\bfetch\s*\(/
 
-      expect(bare).toEqual([])
+  it("the guard pattern catches qualified spellings, not fetchWith", () => {
+    // Without this, weakening the pattern would silently pass every file.
+    expect("fetch(url)").toMatch(CALLS_FETCH)
+    expect("globalThis.fetch(url)").toMatch(CALLS_FETCH)
+    expect("window.fetch(url)").toMatch(CALLS_FETCH)
+    expect("self.fetch(url)").toMatch(CALLS_FETCH)
+    expect("await fetchWith(this.config.fetchImpl, url)").not.toMatch(
+      CALLS_FETCH,
+    )
+    expect("fetchImpl?: FetchImpl").not.toMatch(CALLS_FETCH)
+  })
+
+  for (const file of readdirSync(adaptersDir).filter(f => f.endsWith(".ts"))) {
+    it(`${file} routes every call through fetchWith`, () => {
+      const source = readFileSync(join(adaptersDir, file), "utf8")
+
+      expect(source).not.toMatch(CALLS_FETCH)
+    })
+
+    it(`${file} does not reintroduce a per-adapter transport helper`, () => {
+      // Five byte-identical copies of this helper is what the shared
+      // `fetchWith` replaced. A sixth would drift from the other five, and a
+      // method named `fetchImpl` collides with the config field it reads,
+      // which is what made the bare call easy to write in the first place.
+      const source = readFileSync(join(adaptersDir, file), "utf8")
+
+      expect(source).not.toMatch(/private\s+fetchImpl\s*\(/)
     })
   }
 })

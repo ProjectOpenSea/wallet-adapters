@@ -1,5 +1,17 @@
 # @opensea/wallet-adapters
 
+## 1.2.1
+
+### Patch Changes
+
+- bd4aa58: Every adapter now invokes the configured `fetchImpl` with `globalThis` as the receiver, matching how `@opensea/sdk` invokes the same seam. Each adapter previously copied the transport into a local and called it bare, which leaves the receiver `undefined`.
+
+  That bare call works for unbound native fetch, because Web IDL replaces a `null` or `undefined` receiver with the global object. What it does not survive is a call site written as a member expression: reading the transport off the config and calling it in place makes the config object the receiver, and browsers reject that with "Illegal invocation". Pinning the receiver at one helper removes the difference between the two spellings.
+
+  The five byte-identical `private fetchImpl` methods, one per adapter, collapse into a single `fetchWith` helper. Five copies of a rule meant a fix applied to one and not the others would be a silent divergence, and the private method took the same name as the `config.fetchImpl` field it read, which is what made the bare call easy to write. The helper is duplicated from the SDK rather than imported: `@opensea/wallet-adapters` ships with only `@noble/hashes` and `@noble/curves` as runtime dependencies, and depending on the SDK for five lines would pull in `ethers` and `@opensea/seaport-js`.
+
+  No public API changes. `FetchImpl` and every adapter config are unchanged, and a caller who passes a bound transport or an arrow is unaffected because those ignore the receiver.
+
 ## 1.2.0
 
 ### Minor Changes

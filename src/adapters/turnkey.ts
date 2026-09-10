@@ -68,6 +68,7 @@ import type {
 } from "../types/index.js"
 import { requireIdempotencySupport } from "../types/index.js"
 import { hashPersonalMessage, hashTypedData } from "../util/eip712.js"
+import { fetchWith } from "../util/fetchTransport.js"
 
 export interface TurnkeyConfig {
   apiPublicKey: string
@@ -99,20 +100,6 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
 
   constructor(config: TurnkeyConfig) {
     this.config = config
-  }
-
-  /**
-   * Calls the configured transport, falling back to the global `fetch`.
-   *
-   * A method rather than a getter returning the function: `this.fetchImpl(...)`
-   * invokes whatever the getter returns with the adapter as its receiver, so a
-   * caller passing `globalThis.fetch` straight in would hit an illegal
-   * invocation in browsers. Going through a local binding leaves the receiver
-   * undefined, which is what `fetch` expects.
-   */
-  private fetchImpl(input: string, init?: RequestInit): Promise<Response> {
-    const impl = this.config.fetchImpl
-    return impl ? impl(input, init) : fetch(input, init)
   }
 
   static fromEnv(): TurnkeyAdapter {
@@ -205,7 +192,7 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
     const bodyStr = JSON.stringify(body)
     const stampValue = await this.stamp(bodyStr)
 
-    return this.fetchImpl(`${this.baseUrl}${path}`, {
+    return fetchWith(this.config.fetchImpl, `${this.baseUrl}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -328,7 +315,7 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
       )
     }
 
-    const rpcResponse = await this.fetchImpl(rpcUrl, {
+    const rpcResponse = await fetchWith(this.config.fetchImpl, rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -503,7 +490,7 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
     method: string,
     params: unknown[],
   ): Promise<unknown> {
-    const response = await this.fetchImpl(rpcUrl, {
+    const response = await fetchWith(this.config.fetchImpl, rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
