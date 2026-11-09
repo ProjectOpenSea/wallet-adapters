@@ -1,4 +1,4 @@
-import { defineConfig } from "tsup"
+import { defineConfig } from "tsdown"
 
 export default defineConfig({
   entry: {
@@ -7,9 +7,10 @@ export default defineConfig({
     ethers: "src/bridges/ethers.ts",
   },
   format: ["esm"],
-  dts: true,
+  dts: { sourcemap: true },
   clean: true,
   sourcemap: true,
   target: "node18",
-  external: ["viem", "ethers"],
+  fixedExtension: false,
+  deps: { neverBundle: ["viem", "ethers"] },
 })
