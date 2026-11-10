@@ -17,16 +17,21 @@
  * viem is a peer dependency — consumers must install it separately.
  */
 
-import type { EvmWalletAdapter, WalletAdapter } from "../types/index.js"
+import type { WalletAdapter } from "../types/index.js"
 import { requireEvmAdapter } from "../types/index.js"
 
+/**
+ * Takes the `WalletAdapter` union, which is what `createWalletFromEnv()` returns, and throws
+ * `WrongChainTypeError` for a Solana wallet, so `walletAdapterToViemClient(createWalletFromEnv(),
+ * chain)` compiles without the caller narrowing first. Matches the ethers bridge.
+ */
 export async function walletAdapterToViemClient(
-  adapter: EvmWalletAdapter,
+  adapter: WalletAdapter,
   chain: import("viem").Chain,
   rpcUrl?: string,
 ): Promise<import("viem").WalletClient> {
-  // The static type stops a TypeScript caller, but this package publishes `main` and `types`, so a
-  // JavaScript consumer reaches here with no compile step. Without the check the client is built
+  // A Solana wallet reaches here from a TypeScript caller passing the union, or from a JavaScript
+  // consumer with no compile step. Without the check the client is built
   // happily around a base58 Solana key: `client.account.address` and `eth_accounts` both report it
   // as an Ethereum address, and the first transaction fails with "An unknown RPC error occurred",
   // which names neither the wallet nor the reason. Verified against a real Privy SVM wallet on
@@ -34,7 +39,7 @@ export async function walletAdapterToViemClient(
   //
   // Before `getAddress()`, not after: viem rejects a base58 key, so a later guard is unreachable
   // and the caller sees an address error instead of a chain-type one.
-  const evm = requireEvmAdapter(adapter as WalletAdapter, "a viem client")
+  const evm = requireEvmAdapter(adapter, "a viem client")
 
   const { createWalletClient, createPublicClient, custom, http } = await import(
     "viem"

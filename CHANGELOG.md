@@ -1,5 +1,23 @@
 # @opensea/wallet-adapters
 
+## 1.2.3
+
+### Patch Changes
+
+- a0571fb: Make the ethers bridge a real ethers `AbstractSigner`, so `new OpenSeaSDK(walletAdapterToEthersSigner(wallet, provider), ...)` works.
+
+  The bridge was a plain object with `getAddress`, `sendTransaction`, `signMessage` and `signTypedData`. TypeScript rejected it wherever an ethers `Signer` is typed, and `@opensea/sdk` treated it as a read-only provider at runtime, so `fulfillOrder`, `cancelOrder` and `offchainCancelOrder` failed. It now extends `AbstractSigner`, with these fixes:
+
+  - `getAddress()` returns the checksummed address. `PrivateKeyAdapter` returns lowercase hex, which the SDK's account check rejected for every order call.
+  - `signTypedData` converts bigint fields before calling the adapter, the way ethers' `TypedDataEncoder.getPayload` does: a domain bigint (seaport-js passes `chainId` as one) becomes a number, and other bigints become decimal strings. `PrivyAdapter` posts the request as JSON and threw on the bigint.
+  - `sendTransaction` returns the provider's transaction when it is already indexed, else (including when that lookup fails after the broadcast) a minimal response whose `wait()` polls for the receipt, and resolves an `Addressable` `to`. It now throws before sending when `tx.chainId` is not the provider's chain or `tx.from` is not the adapter's wallet, as ethers' own signers do, and when the request sets `type`, `gasPrice`, `accessList`, `authorizationList` or a blob field, which the adapter request cannot carry. It used to send on `tx.chainId` unchecked and drop the rest silently. An ENS name in `to` is resolved through the provider, an explicit zero `gasLimit` or fee is forwarded instead of being dropped, bytes calldata is hex-encoded, and the fallback response's `wait(confirms, timeout)` forwards both arguments.
+  - `signTransaction` throws, since adapters sign and broadcast in one step.
+  - `walletAdapterToEthersSigner` and the constructor take the `WalletAdapter` union that `createWalletFromEnv()` returns, and still throw `WrongChainTypeError` for a Solana wallet.
+
+  `walletAdapterToViemClient` takes the `WalletAdapter` union too, so `walletAdapterToViemClient(createWalletFromEnv(), chain)` compiles as the README shows. It already threw `WrongChainTypeError` for a Solana wallet at runtime.
+
+  The `provider` parameter is now typed `Provider | null` (optional) instead of `any`. Any ethers provider still fits; a hand-rolled object that is not an ethers `Provider` needs a cast.
+
 ## 1.2.2
 
 ### Patch Changes
