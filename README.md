@@ -102,13 +102,17 @@ const wallet = BankrAdapter.fromEnv()
 
 ### PrivateKey
 
-Local signing for development and testing.
+Local signing for development and testing. The adapter signs EIP-1559
+transactions with the key and broadcasts them with `eth_sendRawTransaction`,
+so any RPC for the target chain works; the node never sees the key.
 
 ```ts
 import { PrivateKeyAdapter } from "@opensea/wallet-adapters"
 
 const wallet = PrivateKeyAdapter.fromEnv()
-// Requires: PRIVATE_KEY, RPC_URL
+// Requires: PRIVATE_KEY
+// Optional: RPC_URL (needed to send transactions; nonce, gas and fees come from it)
+//           WALLET_ADDRESS (skips address derivation; not checked against the key)
 ```
 
 ## Framework Bridges
@@ -130,6 +134,14 @@ import { walletAdapterToEthersSigner } from "@opensea/wallet-adapters/ethers"
 
 const signer = walletAdapterToEthersSigner(wallet, provider)
 // Use as a standard ethers.js Signer
+```
+
+`provider` can come from either ethers build, and `new OpenSeaSDK(signer, ...)` from `@opensea/sdk` accepts the result in ESM and CommonJS projects. The bridge itself is typed against ethers' ESM declarations, which TypeScript treats as unrelated to the CommonJS ones. So an API typed with the CommonJS declarations, such as `Contract` in a CommonJS project or `@opensea/seaport-js` in any project, rejects the signer at compile time although it works at runtime. Cast it to that API's parameter type:
+
+```ts
+import { Contract, type ContractRunner } from "ethers"
+
+const token = new Contract(address, abi, signer as unknown as ContractRunner)
 ```
 
 ## Capabilities

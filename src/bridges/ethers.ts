@@ -34,6 +34,38 @@ import type { EvmWalletAdapter, WalletAdapter } from "../types/index.js"
 import { requireEvmAdapter } from "../types/index.js"
 
 /**
+ * An ethers v6 `Provider` from either the ESM or the CommonJS build.
+ *
+ * ethers ships separate declarations for the two builds, and their classes carry private fields,
+ * so TypeScript treats a provider from one as unrelated to the same type from the other. This
+ * module is ESM and its `Provider` is the ESM copy, which a CommonJS project's `new JsonRpcProvider()`
+ * does not satisfy. This interface picks the members whose declarations agree across both builds and
+ * writes the ones the signer calls without naming a build-specific class. At runtime the signer only calls
+ * provider methods, so a provider from either build works.
+ */
+export interface EthersProviderLike
+  extends Pick<
+    Provider,
+    | "getBlockNumber"
+    | "getFeeData"
+    | "getBalance"
+    | "getTransactionCount"
+    | "getCode"
+    | "estimateGas"
+    | "call"
+    | "resolveName"
+    | "lookupAddress"
+  > {
+  getNetwork(): Promise<{ readonly chainId: bigint }>
+  getTransaction(hash: string): Promise<unknown>
+  waitForTransaction(
+    hash: string,
+    confirms?: number,
+    timeout?: number,
+  ): Promise<unknown>
+}
+
+/**
  * Create an ethers.js Signer from a WalletAdapter.
  *
  * The result is an ethers `AbstractSigner`, so it can be passed anywhere an ethers `Signer` is
@@ -47,7 +79,7 @@ import { requireEvmAdapter } from "../types/index.js"
  */
 export function walletAdapterToEthersSigner(
   adapter: WalletAdapter,
-  provider?: Provider | null,
+  provider?: Provider | EthersProviderLike | null,
 ): EthersAdapterSigner {
   return new EthersAdapterSigner(adapter, provider)
 }
@@ -65,8 +97,11 @@ const UNSUPPORTED_TX_FIELDS = [
 export class EthersAdapterSigner extends AbstractSigner {
   readonly adapter: EvmWalletAdapter
 
-  constructor(adapter: WalletAdapter, provider?: Provider | null) {
-    super(provider)
+  constructor(
+    adapter: WalletAdapter,
+    provider?: Provider | EthersProviderLike | null,
+  ) {
+    super(provider as Provider | null | undefined)
     // In the constructor rather than the factory, so a caller that builds the signer directly is
     // covered too. Without it a Solana wallet, whether from a TypeScript caller passing the union or
     // a JavaScript consumer with no compile step, would get a signer whose `getAddress()` returns a
@@ -83,7 +118,7 @@ export class EthersAdapterSigner extends AbstractSigner {
     return checksumAddress(await this.adapter.getAddress())
   }
 
-  connect(provider: Provider | null): EthersAdapterSigner {
+  connect(provider: Provider | EthersProviderLike | null): EthersAdapterSigner {
     return new EthersAdapterSigner(this.adapter, provider)
   }
 

@@ -1,5 +1,15 @@
 # @opensea/wallet-adapters
 
+## 1.2.4
+
+### Patch Changes
+
+- 11c50f9: `new OpenSeaSDK(signer)` and `walletAdapterToEthersSigner(adapter, provider)` now type-check whichever ethers build the value comes from. ethers 6 ships separate ESM and CommonJS declarations whose classes TypeScript treats as unrelated, so an ESM project (`moduleResolution: nodenext`, or `bundler` on TypeScript 5.6 or later) could not pass its own `new JsonRpcProvider(url)` to `new OpenSeaSDK(...)`, and on current TypeScript no project could pass it `walletAdapterToEthersSigner(...)` ([opensea-sdk#2039](https://github.com/ProjectOpenSea/opensea-sdk/issues/2039)). Runtime behavior is unchanged.
+
+  `@opensea/sdk`: the constructor takes `EthersSignerOrProvider`, which adds structural `EthersSignerLike` and `EthersJsonRpcProviderLike` alternatives to the CommonJS `Signer | JsonRpcProvider`. All four types are exported. A `BrowserProvider` is now accepted directly as well.
+
+  `@opensea/wallet-adapters`: the ethers bridge's `provider` parameter, and `connect()`, also take the new exported `EthersProviderLike`, which a CommonJS project's provider satisfies.
+
 ## 1.2.3
 
 ### Patch Changes

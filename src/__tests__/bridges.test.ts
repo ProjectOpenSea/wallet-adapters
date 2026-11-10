@@ -1,3 +1,4 @@
+import { createRequire } from "node:module"
 import { Contract, Interface } from "ethers"
 import { describe, expect, it, vi } from "vitest"
 import {
@@ -13,6 +14,10 @@ import type {
 import { WrongChainTypeError } from "../types/index.js"
 
 const RECIPIENT = "0x000000000000000000000000000000000000dead"
+
+type CjsEthers = typeof import("ethers", { with: {
+  "resolution-mode": "require",
+}})
 
 function createMockAdapter(
   overrides: Partial<EvmWalletAdapter> = {},
@@ -248,6 +253,25 @@ describe("EthersAdapterSigner", () => {
       message: value,
       primaryType: "Message",
     })
+  })
+
+  it("accepts a provider from the CommonJS build of ethers", async () => {
+    // A CommonJS project's `new JsonRpcProvider()` is the lib.commonjs class, which TypeScript
+    // treats as unrelated to this module's lib.esm Provider. Compiling this call is half the test.
+    const { JsonRpcProvider } = createRequire(import.meta.url)(
+      "ethers",
+    ) as CjsEthers
+    const provider = new JsonRpcProvider("http://127.0.0.1:1", 8453, {
+      staticNetwork: true,
+    })
+    vi.spyOn(provider, "getTransaction").mockResolvedValue(null)
+    const adapter = createMockAdapter()
+    const signer = walletAdapterToEthersSigner(adapter, provider)
+    expect(signer.connect(provider).provider).toBe(provider)
+    await signer.sendTransaction({ to: RECIPIENT })
+    expect(adapter.sendTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ to: RECIPIENT, chainId: 8453 }),
+    )
   })
 
   it("connect returns new signer with different provider", () => {
