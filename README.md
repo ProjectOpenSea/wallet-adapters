@@ -1,9 +1,5 @@
 # @opensea/wallet-adapters
 
-> **Read-only mirror.** This package is developed in a private monorepo and mirrored to [ProjectOpenSea/wallet-adapters](https://github.com/ProjectOpenSea/wallet-adapters) when a version is released, so the public code can trail the internal main branch by weeks.
->
-> Pull requests opened on the mirror cannot be merged there. They are read, and a fix worth taking is recreated in the monorepo. Because a fix that has landed internally is not public until the next release, filing an issue before writing a patch is the quickest way to find out whether a bug is already fixed.
-
 Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends.
 
 ## Why wallet-adapters?
@@ -204,6 +200,10 @@ export class MyProviderAdapter implements WalletAdapter {
 ```
 
 Then register it in the `createWalletFromEnv()` factory in `src/factory.ts` so the CLI and tool-sdk auto-detect it from environment variables.
+
+## Contributing
+
+Read-only mirror of a private monorepo, updated on each release. Pull requests are welcome, and we bring accepted changes into the monorepo.
 
 ## Security
 
