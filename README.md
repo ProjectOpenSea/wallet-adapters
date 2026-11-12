@@ -1,26 +1,13 @@
 # @opensea/wallet-adapters
 
-Provider-agnostic wallet adapters for signing and sending transactions across managed and local backends.
+One `WalletAdapter` interface for signing and sending transactions through managed providers (Privy, Fireblocks, Turnkey, Bankr) or a local private key.
 
-## Why wallet-adapters?
+[`@opensea/sdk`](https://github.com/ProjectOpenSea/opensea-sdk), [`@opensea/cli`](https://github.com/ProjectOpenSea/opensea-cli), [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/tool-sdk), and [`opensea-skill`](https://github.com/ProjectOpenSea/opensea-skill) all sign through this interface, so a provider implemented here works in each of them.
 
-`@opensea/wallet-adapters` is the shared wallet layer used across the OpenSea developer toolchain. Every package that needs to sign transactions depends on the same `WalletAdapter` interface:
-
-- [`@opensea/sdk`](https://github.com/ProjectOpenSea/opensea-sdk) — TypeScript SDK for buying, selling, and managing NFTs
-- [`@opensea/cli`](https://github.com/ProjectOpenSea/opensea-cli) — command-line interface for the OpenSea API
-- [`@opensea/tool-sdk`](https://github.com/ProjectOpenSea/tool-sdk) — SDK for building ERC-8257 AI agent tools
-- [`opensea-skill`](https://github.com/ProjectOpenSea/opensea-skill) — modular AI agent skills for Claude, Devin, and other assistants
-
-By implementing the `WalletAdapter` interface once, a new wallet provider automatically works everywhere — the CLI, the SDK, AI agent tool execution, and any future package that depends on this library.
-
-## Features
-
-- **Provider-agnostic interface** — unified `WalletAdapter` abstraction with capabilities declaration
-- **Managed providers** — Privy, Turnkey, Fireblocks, Bankr (handle gas/nonce server-side)
-- **Local providers** — PrivateKey (handle gas/nonce client-side via RPC)
-- **Framework bridges** — optional adapters for viem and ethers.js
-- **Zero heavy dependencies** — core uses Web Crypto + `@noble/hashes` / `@noble/curves`
-- **Auto-detection** — `createWalletFromEnv()` picks the right provider from environment variables
+- Managed providers (Privy, Fireblocks, Bankr) handle gas and nonces server-side. Turnkey and PrivateKey fetch them from an RPC endpoint.
+- `createWalletFromEnv()` picks a provider from environment variables.
+- Optional bridges turn an adapter into a viem `WalletClient` or an ethers `Signer`.
+- The core depends only on Web Crypto and `@noble/hashes` / `@noble/curves`. `viem`, `ethers`, and `@privy-io/node` are optional peer dependencies.
 
 ## Installation
 
@@ -30,14 +17,14 @@ npm install @opensea/wallet-adapters
 pnpm add @opensea/wallet-adapters
 ```
 
-## Quick Start
+## Quick start
 
 ```ts
-import { createWalletFromEnv } from "@opensea/wallet-adapters"
+import { createWalletFromEnv, requireEvmAdapter } from "@opensea/wallet-adapters"
 
 // Auto-detects provider from environment variables
 // Priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey
-const wallet = createWalletFromEnv()
+const wallet = requireEvmAdapter(createWalletFromEnv(), "quick start")
 
 const address = await wallet.getAddress()
 const result = await wallet.sendTransaction({
@@ -49,11 +36,13 @@ const result = await wallet.sendTransaction({
 console.log(`TX hash: ${result.hash}`)
 ```
 
+`createWalletFromEnv()` returns an EVM wallet by default. Pass `{ chainType: "svm" }` for a Solana wallet, which only Privy supports (it reads `PRIVY_SVM_WALLET_ID` instead of `PRIVY_WALLET_ID`). The return type covers both chain families, so narrow it with `requireEvmAdapter` or `isEvmAdapter` before calling EVM-only methods.
+
 ## Adapters
 
 ### Privy
 
-Server-side wallet via Privy's API. Handles gas estimation and nonce management.
+Server-side wallet through Privy's API. Privy estimates gas and manages nonces.
 
 ```ts
 import { PrivyAdapter } from "@opensea/wallet-adapters"
@@ -64,7 +53,7 @@ const wallet = PrivyAdapter.fromEnv()
 
 ### Fireblocks
 
-Enterprise MPC custody via Fireblocks API.
+MPC custody through the Fireblocks API.
 
 ```ts
 import { FireblocksAdapter } from "@opensea/wallet-adapters"
@@ -87,7 +76,7 @@ const wallet = TurnkeyAdapter.fromEnv()
 
 ### Bankr
 
-Managed agent wallet via Bankr's Wallet API. Auth is a single API key; the provider handles gas, nonce, and broadcast.
+Agent wallet through Bankr's Wallet API. One API key authenticates, and Bankr handles gas, nonces, and broadcast.
 
 ```ts
 import { BankrAdapter } from "@opensea/wallet-adapters"
@@ -98,9 +87,7 @@ const wallet = BankrAdapter.fromEnv()
 
 ### PrivateKey
 
-Local signing for development and testing. The adapter signs EIP-1559
-transactions with the key and broadcasts them with `eth_sendRawTransaction`,
-so any RPC for the target chain works; the node never sees the key.
+Local signing for development and testing. The adapter signs EIP-1559 transactions itself and broadcasts them with `eth_sendRawTransaction`, so any RPC for the target chain works and the node never sees the key.
 
 ```ts
 import { PrivateKeyAdapter } from "@opensea/wallet-adapters"
@@ -111,7 +98,7 @@ const wallet = PrivateKeyAdapter.fromEnv()
 //           WALLET_ADDRESS (skips address derivation; not checked against the key)
 ```
 
-## Framework Bridges
+## Framework bridges
 
 ### viem
 
@@ -119,7 +106,7 @@ const wallet = PrivateKeyAdapter.fromEnv()
 import { walletAdapterToViemClient } from "@opensea/wallet-adapters/viem"
 import { base } from "viem/chains"
 
-const client = walletAdapterToViemClient(wallet, base, "https://mainnet.base.org")
+const client = await walletAdapterToViemClient(wallet, base, "https://mainnet.base.org")
 // Use as a standard viem WalletClient
 ```
 
@@ -132,7 +119,9 @@ const signer = walletAdapterToEthersSigner(wallet, provider)
 // Use as a standard ethers.js Signer
 ```
 
-`provider` can come from either ethers build, and `new OpenSeaSDK(signer, ...)` from `@opensea/sdk` accepts the result in ESM and CommonJS projects. The bridge itself is typed against ethers' ESM declarations, which TypeScript treats as unrelated to the CommonJS ones. So an API typed with the CommonJS declarations, such as `Contract` in a CommonJS project or `@opensea/seaport-js` in any project, rejects the signer at compile time although it works at runtime. Cast it to that API's parameter type:
+Both bridges throw `WrongChainTypeError` when given a Solana wallet.
+
+`provider` can come from either ethers build, and `new OpenSeaSDK(signer, ...)` from `@opensea/sdk` accepts the signer in ESM and CommonJS projects. The bridge is typed against ethers' ESM declarations, which TypeScript treats as unrelated to the CommonJS ones. An API typed with the CommonJS declarations (`Contract` in a CommonJS project, or `@opensea/seaport-js` in any project) rejects the signer at compile time even though it works at runtime. Cast it to that API's parameter type:
 
 ```ts
 import { Contract, type ContractRunner } from "ethers"
@@ -142,15 +131,15 @@ const token = new Contract(address, abi, signer as unknown as ContractRunner)
 
 ## Capabilities
 
-Each adapter declares its capabilities so consumers can check before calling:
+Each adapter declares what it supports, so callers can check before calling an optional method:
 
 ```ts
 if (wallet.capabilities.signMessage) {
-  const sig = await wallet.signMessage({ message: "hello" })
+  const sig = await wallet.signMessage?.({ message: "hello" })
 }
 
 if (wallet.capabilities.managedGas) {
-  // No need to estimate gas — the provider handles it
+  // No need to estimate gas: the provider handles it
 }
 ```
 
@@ -163,7 +152,7 @@ if (wallet.capabilities.managedGas) {
 
 ## Observability
 
-Attach hooks for tracing and monitoring:
+Set `onRequest` and `onResponse` to trace adapter calls:
 
 ```ts
 wallet.onRequest = (method, params) => {
@@ -174,15 +163,23 @@ wallet.onResponse = (method, result, durationMs) => {
 }
 ```
 
-## Adding a New Provider
+## Adding a provider
 
-To add a wallet provider, implement the `WalletAdapter` interface:
+Implement `EvmWalletAdapter` (or `SvmWalletAdapter` for Solana):
 
 ```ts
-import type { WalletAdapter, WalletCapabilities } from "@opensea/wallet-adapters"
+import type {
+  EvmTransactionRequest,
+  EvmWalletAdapter,
+  SignMessageRequest,
+  SignTypedDataRequest,
+  TransactionResult,
+  WalletCapabilities,
+} from "@opensea/wallet-adapters"
 
-export class MyProviderAdapter implements WalletAdapter {
+export class MyProviderAdapter implements EvmWalletAdapter {
   readonly name = "my-provider"
+  readonly chainType = "evm" as const
   readonly capabilities: WalletCapabilities = {
     signMessage: true,
     signTypedData: true,
@@ -191,15 +188,15 @@ export class MyProviderAdapter implements WalletAdapter {
   }
 
   async getAddress(): Promise<string> { /* ... */ }
-  async sendTransaction(tx) { /* ... */ }
-  async signMessage(request) { /* ... */ }
-  async signTypedData(request) { /* ... */ }
+  async sendTransaction(tx: EvmTransactionRequest): Promise<TransactionResult> { /* ... */ }
+  async signMessage(request: SignMessageRequest): Promise<string> { /* ... */ }
+  async signTypedData(request: SignTypedDataRequest): Promise<string> { /* ... */ }
 
   static fromEnv(): MyProviderAdapter { /* ... */ }
 }
 ```
 
-Then register it in the `createWalletFromEnv()` factory in `src/factory.ts` so the CLI and tool-sdk auto-detect it from environment variables.
+Then register it in `createWalletFromEnv()` in `src/factory.ts` so the CLI and tool-sdk detect it from environment variables.
 
 ## Contributing
 
