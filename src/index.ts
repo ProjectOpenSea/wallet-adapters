@@ -40,7 +40,6 @@ export type {
   SvmTransactionRequest,
   SvmWalletAdapter,
   SvmWalletCapabilities,
-  TransactionRequest,
   TransactionResult,
   WalletAdapter,
   WalletCapabilities,

@@ -1,5 +1,11 @@
 # @opensea/wallet-adapters
 
+## 2.0.0
+
+### Major Changes
+
+- ed09a89: Remove the deprecated `TransactionRequest` type alias. Use `EvmTransactionRequest`, which has the same shape. The alias was kept when SVM support added `SvmTransactionRequest`.
+
 ## 1.2.4
 
 ### Patch Changes

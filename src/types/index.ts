@@ -110,12 +110,6 @@ export interface EvmTransactionRequest {
 }
 
 /**
- * @deprecated Renamed to {@link EvmTransactionRequest} now that SVM has its own shape. Kept as an
- * alias so the rename alone does not break a consumer that only handles EVM.
- */
-export type TransactionRequest = EvmTransactionRequest
-
-/**
  * A Solana transaction to sign and, optionally, broadcast.
  *
  * Carried as the serialized wire message rather than a structured `to`/`data`/`value`, because a
