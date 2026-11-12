@@ -7,12 +7,12 @@
  * managed wallet provider (Privy, Turnkey, Fireblocks).
  *
  * Required environment variables:
- *   PRIVATE_KEY — Hex-encoded private key (with or without 0x prefix)
+ *   PRIVATE_KEY: hex-encoded private key, with or without the 0x prefix
  *
  * Optional:
- *   RPC_URL        — JSON-RPC endpoint for broadcasting and gas estimation
+ *   RPC_URL:         JSON-RPC endpoint for broadcasting and gas estimation
  *                    (required only when sending transactions)
- *   WALLET_ADDRESS — Pre-computed address (skips derivation)
+ *   WALLET_ADDRESS:  precomputed address (skips derivation)
  */
 
 import { secp256k1 } from "@noble/curves/secp256k1"

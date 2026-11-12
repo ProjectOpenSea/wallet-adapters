@@ -15,7 +15,7 @@
  * const signer = walletAdapterToEthersSigner(adapter, provider)
  * ```
  *
- * ethers v6 is a peer dependency — consumers must install it separately.
+ * ethers v6 is a peer dependency, so consumers must install it separately.
  */
 
 import {

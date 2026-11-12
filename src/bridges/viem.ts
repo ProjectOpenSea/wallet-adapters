@@ -14,7 +14,7 @@
  * const client = await walletAdapterToViemClient(adapter, base)
  * ```
  *
- * viem is a peer dependency — consumers must install it separately.
+ * viem is a peer dependency, so consumers must install it separately.
  */
 
 import type { WalletAdapter } from "../types/index.js"

@@ -22,12 +22,12 @@
  * `sendTransaction` is optional on this interface while `signTransaction` is required, the
  * reverse of the EVM side. An integrator who wants to broadcast themselves, or to simulate or
  * have a fee payer co-sign first, can use `signTransaction` alone and never call
- * `signAndSendTransaction`.
+ * `sendTransaction` (which issues Privy's `signAndSendTransaction` RPC).
  *
  * Required environment variables:
- *   PRIVY_APP_ID           — Privy application ID
- *   PRIVY_APP_SECRET       — Privy application secret
- *   PRIVY_SVM_WALLET_ID    — id of a wallet whose chain_type is `solana`
+ *   PRIVY_APP_ID:          Privy application ID
+ *   PRIVY_APP_SECRET:      Privy application secret
+ *   PRIVY_SVM_WALLET_ID:   id of a wallet whose chain_type is `solana`
  *
  * Optional: PRIVY_API_BASE_URL, PRIVY_AUTH_SIGNING_KEY (see `privy.ts`).
  *

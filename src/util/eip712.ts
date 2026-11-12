@@ -183,8 +183,8 @@ function encodeValue(
     const n = BigInt(value as string | number | bigint)
     // Reject values outside the type's domain instead of silently wrapping.
     // A negative value for an unsigned type, or any value beyond the declared
-    // width, would otherwise be misencoded — e.g. a negative token amount would
-    // wrap into a near-max positive transfer via two's complement.
+    // width, would otherwise be misencoded: a negative token amount, for example,
+    // would wrap into a near-max positive transfer via two's complement.
     if (signed) {
       const max = (1n << BigInt(bits - 1)) - 1n
       const min = -(1n << BigInt(bits - 1))

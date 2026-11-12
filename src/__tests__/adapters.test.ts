@@ -442,7 +442,7 @@ describe("FireblocksAdapter signMessage/signTypedData", () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ id: "tx-123" }), { status: 200 }),
     )
-    // Second call: poll — returns completed with signature
+    // Second call: poll, which returns completed with a signature
     fetchSpy.mockResolvedValueOnce(
       new Response(
         JSON.stringify({

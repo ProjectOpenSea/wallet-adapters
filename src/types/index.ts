@@ -1,20 +1,20 @@
 /**
  * Core types for the wallet adapter interface.
  *
- * These types define the contract between consumers and wallet providers.
- * Designed to be provider-agnostic and extensible for future signing
- * capabilities (EIP-712, EIP-191, batch transactions, etc.).
+ * The contract between consumers and wallet providers. Provider-agnostic,
+ * and open to new signing capabilities (EIP-712, EIP-191, batch
+ * transactions, etc.).
  */
 
 /**
  * Provider-shaped wallet metadata used by the `opensea wallet info` CLI
  * command and by callers auditing the security posture of an agent wallet.
  *
- * Each variant surfaces only what the provider's API actually exposes for
- * the calling credentials. Fields whose absence indicates a hardening gap
- * (no on-chain policy enforcement, no off-machine credential gating
- * administrative changes, etc.) are intentionally surfaced as falsy values
- * rather than hidden, so callers can warn the user.
+ * Each variant reports only what the provider's API exposes for the calling
+ * credentials. Fields that signal a hardening gap (no onchain policy
+ * enforcement, no off-machine credential gating administrative changes,
+ * etc.) are reported as falsy values rather than omitted, so callers can
+ * warn the user.
  */
 export type WalletInfo =
   | {
@@ -42,7 +42,7 @@ export type WalletInfo =
        * True iff the calling API user is in the organization's root
        * quorum. Root users bypass Turnkey's policy engine entirely, so a
        * leaked root API key has the same blast radius as a raw private
-       * key — sign, mutate, export, all unconstrained.
+       * key: it can sign, change policy, and export without limits.
        */
       isRootUser: boolean
     }
@@ -51,8 +51,8 @@ export type WalletInfo =
       address: string
       vaultId: string
       /**
-       * Fireblocks does not expose API-user role via API. The CLI
-       * surfaces a static reminder to verify the role at the console.
+       * Fireblocks does not expose the API user's role through the API.
+       * The CLI shows a static reminder to verify the role at the console.
        */
       roleIntrospectable: false
     }
@@ -195,10 +195,10 @@ export interface BaseWalletAdapter {
 
   /**
    * Read-only metadata about the wallet's security posture. Used by the
-   * `opensea wallet info` CLI to surface hardening gaps (no policy, no
+   * `opensea wallet info` CLI to report hardening gaps (no policy, no
    * authorization-key gating, root-user API key, etc.). Optional because
-   * not every adapter has a meaningful introspection surface — the
-   * private-key adapter, for instance, has nothing to report.
+   * some adapters have nothing to introspect; the private-key adapter, for
+   * one, has nothing to report.
    */
   getWalletInfo?(): Promise<WalletInfo>
 

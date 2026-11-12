@@ -1,21 +1,21 @@
 /**
  * Fireblocks wallet adapter.
  *
- * Uses Fireblocks' REST API to sign and send transactions through their
- * enterprise-grade MPC custody infrastructure.
+ * Signs and sends transactions through the Fireblocks REST API, backed by
+ * Fireblocks MPC custody.
  *
  * # Security model
  *
  * This adapter is **signing-only by design.** It exposes only the
  * primitives an agent needs to sign and send transactions:
  * `getAddress`, `sendTransaction`, `signMessage`, `signTypedData`, and
- * `getWalletInfo`. Future contributors: **do not add
+ * `getWalletInfo`. **Do not add
  * `createTransactionAuthPolicy`, `updateUser`, `createApiUser`,
  * `whitelistAddress`, or any other administrative endpoint to this
  * adapter.** If they exist, an agent will find and use them.
  *
- * Effective hardening requires creating the API key with the **`Signer`
- * role** and nothing broader:
+ * Hardening requires creating the API key with the **`Signer` role** and
+ * nothing broader:
  *
  *   1. Fireblocks supports nine API key roles: Admin, Signer,
  *      NCW_SIGNER, Non-Signing Admin, Approver, Editor, NCW_ADMIN,
@@ -23,16 +23,16 @@
  *      gives signing capability without governance access. Do not use
  *      `Admin` for an agent.
  *
- *   2. Fireblocks does not expose API-user role via API — there is no
- *      `/v1/users/me` introspection endpoint, and `GET /v1/users/{id}`
+ *   2. Fireblocks does not expose the API user's role through the API.
+ *      There is no `/v1/users/me` introspection endpoint, and `GET /v1/users/{id}`
  *      itself requires admin role. `getWalletInfo()` therefore cannot
  *      verify the calling key's role at runtime; verify it manually at
  *      console.fireblocks.io and re-confirm whenever you rotate the key.
  *
- *   3. TAP changes require admin quorum approval at the console — a
- *      leaked Signer-role key cannot rewrite TAP. This is structurally
- *      stronger than Privy or Turnkey, but only if the key is actually
- *      `Signer` rather than `Admin`.
+ *   3. TAP changes require admin quorum approval at the console, so a
+ *      leaked Signer-role key cannot rewrite TAP. That is stronger than
+ *      Privy or Turnkey, but only if the key really is `Signer` and not
+ *      `Admin`.
  *
  *   4. TAP rules cap per-tx values; aggregate (daily/weekly) caps are
  *      not a TAP primitive. Use the hot/cold wallet float pattern
@@ -40,14 +40,14 @@
  *      `packages/skill/opensea-wallet/references/wallet-funding.md`.
  *
  * Required environment variables:
- *   FIREBLOCKS_API_KEY       — Fireblocks API key (must be Signer role)
- *   FIREBLOCKS_API_SECRET    — Fireblocks API secret (RSA private key, PEM-encoded)
- *   FIREBLOCKS_VAULT_ID      — Fireblocks vault account ID
+ *   FIREBLOCKS_API_KEY:        Fireblocks API key (must be Signer role)
+ *   FIREBLOCKS_API_SECRET:     Fireblocks API secret (RSA private key, PEM-encoded)
+ *   FIREBLOCKS_VAULT_ID:       Fireblocks vault account ID
  *
  * Optional:
- *   FIREBLOCKS_API_BASE_URL       — Override the API base URL
- *   FIREBLOCKS_ASSET_ID           — Override the Fireblocks asset ID
- *   FIREBLOCKS_MAX_POLL_ATTEMPTS  — Override max polling attempts (default: 60 = 120s)
+ *   FIREBLOCKS_API_BASE_URL:        Override the API base URL
+ *   FIREBLOCKS_ASSET_ID:            Override the Fireblocks asset ID
+ *   FIREBLOCKS_MAX_POLL_ATTEMPTS:   Override max polling attempts (default: 60 = 120s)
  *
  * @see https://developers.fireblocks.com/docs/manage-api-keys
  * @see https://developers.fireblocks.com/docs/manage-users

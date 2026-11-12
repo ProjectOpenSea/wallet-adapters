@@ -1,9 +1,9 @@
 /**
  * Privy wallet adapter.
  *
- * Uses Privy's server-side wallet API to sign and send transactions.
- * Transactions are governed by Privy's programmable policy engine —
- * policies are evaluated in a trusted execution environment before signing.
+ * Signs and sends transactions through Privy's server-side wallet API.
+ * Privy's policy engine evaluates each transaction in a trusted execution
+ * environment before signing.
  *
  * # Security model
  *
@@ -12,16 +12,15 @@
  * metadata: `getAddress`, `sendTransaction`, `signMessage`,
  * `signTypedData`, and `getWalletInfo`. It deliberately does not, and
  * should not, expose policy mutation, owner-key rotation, additional-
- * signer changes, key export, or wallet deletion. Future contributors:
- * **do not add `setPolicy`, `rotateOwner`, `addSigner`, or similar
- * mutation methods to this adapter.** If they exist, an agent will find
- * and use them — including raising its own spending cap.
+ * signer changes, key export, or wallet deletion. **Do not add
+ * `setPolicy`, `rotateOwner`, `addSigner`, or similar mutation methods to
+ * this adapter.** If they exist, an agent will find and use them, for
+ * example to raise its own spending cap.
  *
- * Effective hardening requires Privy-side configuration in addition to
- * this adapter's defaults:
+ * Hardening also needs Privy-side configuration:
  *
  *   1. Create the wallet with an `owner_id` (a key quorum). The owner's
- *      private key MUST live outside the agent environment — on a
+ *      private key MUST live outside the agent environment: on a
  *      trusted operator machine, in a hardware wallet, or in a separate
  *      vault. The owner gates all `PATCH /v1/wallets/{id}` and similar
  *      administrative operations.
@@ -29,24 +28,24 @@
  *   2. Register the agent's signing key as an `additional_signer` on the
  *      wallet, with `override_policy_ids` set to the policy you want
  *      the agent to be subject to. The agent's signing key may live in
- *      env (`PRIVY_AUTH_SIGNING_KEY`) — it has signing power but cannot
- *      mutate policy, signers, or owner.
+ *      env (`PRIVY_AUTH_SIGNING_KEY`). It can sign but cannot change the
+ *      policy, signers, or owner.
  *
  *   3. Apply a Privy policy that caps per-tx spend, allowlists
  *      contracts, and restricts chains. Policies are stateless per-tx
- *      evaluators — they cannot enforce aggregate (daily/weekly)
+ *      evaluators and cannot enforce aggregate (daily/weekly)
  *      caps. Use the hot/cold wallet float pattern documented in
  *      `packages/skill/opensea-wallet/references/wallet-funding.md`
  *      for aggregate ceilings.
  *
  * Required environment variables:
- *   PRIVY_APP_ID      — Privy application ID
- *   PRIVY_APP_SECRET  — Privy application secret
- *   PRIVY_WALLET_ID   — Wallet ID to use for signing
+ *   PRIVY_APP_ID:       Privy application ID
+ *   PRIVY_APP_SECRET:   Privy application secret
+ *   PRIVY_WALLET_ID:    Wallet ID to use for signing
  *
  * Optional:
- *   PRIVY_API_BASE_URL      — Override the Privy API base URL
- *   PRIVY_AUTH_SIGNING_KEY  — Base64-encoded PKCS8 P-256 private key for
+ *   PRIVY_API_BASE_URL:       Override the Privy API base URL
+ *   PRIVY_AUTH_SIGNING_KEY:   Base64-encoded PKCS8 P-256 private key for
  *                             an `additional_signer` on this wallet. When
  *                             set, the adapter signs every POST /rpc
  *                             request with it and attaches the

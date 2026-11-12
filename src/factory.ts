@@ -1,12 +1,13 @@
 /**
- * Auto-detection factory that creates a WalletAdapter based on
- * which environment variables are present.
+ * Creates a WalletAdapter for whichever provider's environment variables
+ * are set.
  *
- * Priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey
+ * EVM priority: Privy > Fireblocks > Turnkey > Bankr > PrivateKey. Privy is
+ * the only SVM provider.
  *
  * Selection is per chain family. A Privy wallet is bound to one `chain_type`, so an EVM wallet and
  * a Solana wallet are two wallets with two ids, and both can be configured at once. Pass
- * `{ chainType: "svm" }` to ask for the Solana one; the default stays EVM so existing callers are
+ * `{ chainType: "svm" }` for the Solana one. The default is EVM, so existing callers are
  * unaffected.
  */
 

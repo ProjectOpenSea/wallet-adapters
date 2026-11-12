@@ -1,8 +1,8 @@
 /**
  * Turnkey wallet adapter.
  *
- * Uses Turnkey's API to sign and send transactions via HSM-backed
- * signing infrastructure. Authentication uses Turnkey's stamp scheme:
+ * Signs and sends transactions through Turnkey's HSM-backed signing API.
+ * Authentication uses Turnkey's stamp scheme:
  * each request body is hashed and signed with a P-256 ECDSA key.
  *
  * # Security model
@@ -10,17 +10,17 @@
  * This adapter is **signing-only by design.** It exposes only the
  * primitives an agent needs to sign transactions and read user
  * metadata: `getAddress`, `sendTransaction`, `signMessage`,
- * `signTypedData`, and `getWalletInfo`. Future contributors: **do not
+ * `signTypedData`, and `getWalletInfo`. **Do not
  * add `createPolicy`, `deletePolicy`, `createApiKeys`, `updateUser`,
  * `exportWallet`, or any other administrative activity submission to
  * this adapter.** If they exist, an agent will find and use them.
  *
- * Effective hardening requires creating the API user as a **non-root
- * user** with a tightly scoped sign-only policy:
+ * Hardening requires creating the API user as a **non-root user** with a
+ * narrow sign-only policy:
  *
  *   1. Root users in Turnkey bypass the policy engine entirely. A
  *      leaked root-user API key has the same blast radius as a raw
- *      private key — it can sign anything, mutate any policy, mint new
+ *      private key: it can sign anything, change any policy, create new
  *      wallets, and export keys. Do not use a root user as the agent's
  *      API user.
  *
@@ -28,29 +28,29 @@
  *      only `ACTIVITY_TYPE_SIGN_TRANSACTION_V2` (and
  *      `ACTIVITY_TYPE_SIGN_RAW_PAYLOAD_V2` if EIP-712 is needed) for
  *      the wallet addresses the agent should be able to sign for.
- *      Default-deny on everything else; Turnkey policies default to
- *      deny so this is mostly a matter of writing the allowlist.
+ *      Turnkey policies deny by default, so this mostly means writing
+ *      the allowlist.
  *
- *   3. Note that Turnkey policies are stateless per-activity
- *      evaluators — they cannot enforce aggregate (daily/weekly) caps.
+ *   3. Turnkey policies are stateless per-activity evaluators and
+ *      cannot enforce aggregate (daily/weekly) caps.
  *      Use the hot/cold wallet float pattern documented in
  *      `packages/skill/opensea-wallet/references/wallet-funding.md`
  *      for aggregate ceilings.
  *
- * `getWalletInfo()` calls `whoami` and `get_organization` to surface
+ * `getWalletInfo()` calls `whoami` and `get_organization` to report
  * whether the API user is in the root quorum, so `opensea wallet info`
- * can warn loudly if the agent is running as root.
+ * can warn when the agent runs as root.
  *
  * Required environment variables:
- *   TURNKEY_API_PUBLIC_KEY   — Turnkey API public key (hex-encoded)
- *   TURNKEY_API_PRIVATE_KEY  — Turnkey API private key (hex-encoded P-256)
- *   TURNKEY_ORGANIZATION_ID  — Turnkey organization ID
- *   TURNKEY_WALLET_ADDRESS   — Ethereum address managed by Turnkey
- *   TURNKEY_RPC_URL          — RPC endpoint for gas estimation and broadcast
+ *   TURNKEY_API_PUBLIC_KEY:    Turnkey API public key (hex-encoded)
+ *   TURNKEY_API_PRIVATE_KEY:   Turnkey API private key (hex-encoded P-256)
+ *   TURNKEY_ORGANIZATION_ID:   Turnkey organization ID
+ *   TURNKEY_WALLET_ADDRESS:    Ethereum address managed by Turnkey
+ *   TURNKEY_RPC_URL:           RPC endpoint for gas estimation and broadcast
  *
  * Optional:
- *   TURNKEY_API_BASE_URL   — Override the Turnkey API base URL
- *   TURNKEY_PRIVATE_KEY_ID — Turnkey private key ID (for signing with a specific key)
+ *   TURNKEY_API_BASE_URL:    Override the Turnkey API base URL
+ *   TURNKEY_PRIVATE_KEY_ID:  Turnkey private key ID (for signing with a specific key)
  *
  * @see https://docs.turnkey.com/concepts/policies/overview
  * @see https://docs.turnkey.com/concepts/users/best-practices
@@ -166,7 +166,7 @@ export class TurnkeyAdapter implements EvmWalletAdapter {
     )
 
     // WebCrypto ECDSA sign hashes internally, so this signs SHA-256(SHA-256(body)).
-    // Turnkey's server verifier expects this — matches packages/cli/src/wallet/turnkey.ts.
+    // Turnkey's server verifier expects this. Matches packages/cli/src/wallet/turnkey.ts.
     const p1363Sig = await crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
       cryptoKey,

@@ -1,23 +1,23 @@
 /**
  * Bankr wallet adapter.
  *
- * Uses Bankr's Wallet API to sign and send transactions via a managed
- * agent wallet. Authentication is done via API key in the X-API-Key header.
+ * Signs and sends transactions from a managed agent wallet through Bankr's
+ * Wallet API. Authenticates with an API key in the X-API-Key header.
  *
  * # Security model
  *
  * This adapter is **signing-only by design.** It exposes only the
  * primitives an agent needs: `getAddress`, `sendTransaction`,
- * `signMessage`, `signTypedData`, and `getWalletInfo`. Future
- * contributors: do not add scope-mutation or key-management surfaces
- * here — Bankr does not expose them via API anyway, and adding
- * adapter-side wrappers around dashboard ops would be a footgun.
+ * `signMessage`, `signTypedData`, and `getWalletInfo`. Do not add
+ * scope-mutation or key-management methods here. Bankr's API does not
+ * expose them, and wrapping dashboard operations in the adapter would
+ * hand them to the agent.
  *
- * Effective hardening is done at the API key configuration level on
- * bankr.bot/api, not in this adapter:
+ * Hardening happens in the API key's configuration on bankr.bot/api, not
+ * in this adapter:
  *
- *   1. For monitoring-only agents, enable the key's `readOnly` flag —
- *      `/wallet/sign` and `/wallet/submit` will return 403.
+ *   1. For monitoring-only agents, enable the key's `readOnly` flag.
+ *      `/wallet/sign` and `/wallet/submit` then return 403.
  *
  *   2. For signing agents, set `allowedRecipients` (an EVM/Solana
  *      address allowlist) and `allowedIps` (CIDR allowlist) on the
@@ -27,8 +27,8 @@
  *   3. Set per-key daily message limits at bankr.bot/api.
  *
  *   4. Bankr does not expose key-scope flags via API, so
- *      `getWalletInfo()` cannot verify these settings at runtime —
- *      `opensea wallet info` reminds the user to verify scope at the
+ *      `getWalletInfo()` cannot verify these settings at runtime.
+ *      `opensea wallet info` reminds the user to check scope in the
  *      dashboard. Re-confirm after any key rotation.
  *
  *   5. Bankr keys cannot enforce aggregate dollar/ETH spend caps; daily
@@ -37,10 +37,10 @@
  *      `packages/skill/opensea-wallet/references/wallet-funding.md`.
  *
  * Required environment variables:
- *   BANKR_API_KEY — Bankr API key with Wallet API access enabled
+ *   BANKR_API_KEY: Bankr API key with Wallet API access enabled
  *
  * Optional:
- *   BANKR_API_BASE_URL — Override the Bankr API base URL
+ *   BANKR_API_BASE_URL: Override the Bankr API base URL
  *
  * @see https://docs.bankr.bot/agent-api/authentication
  * @see https://docs.bankr.bot/agent-api/access-control
